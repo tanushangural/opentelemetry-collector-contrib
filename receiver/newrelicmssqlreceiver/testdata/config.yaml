@@ -1,0 +1,27 @@
+receivers:
+  newrelicmssql:
+    hostname: localhost
+    port: 1433
+    username: sa
+    password: ${MSSQL_PASSWORD}
+    collection_interval: 30s
+    enable_ssl: false
+    trust_server_certificate: true
+    timeout: 30
+    enable_buffer_metrics: true
+    enable_database_reserve_metrics: true
+    enable_disk_metrics_in_bytes: false
+
+processors:
+  batch:
+
+exporters:
+  logging:
+    verbosity: detailed
+
+service:
+  pipelines:
+    metrics:
+      receivers: [newrelicmssql]
+      processors: [batch]
+      exporters: [logging]

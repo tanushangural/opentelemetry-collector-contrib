@@ -1,0 +1,80 @@
+name: New Relic MSSQL Receiver
+
+on:
+  push:
+    paths:
+      - 'receiver/newrelicmssqlreceiver/**'
+  pull_request:
+    paths:
+      - 'receiver/newrelicmssqlreceiver/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2019-latest
+        env:
+          ACCEPT_EULA: Y
+          SA_PASSWORD: YourStrong@Passw0rd
+          MSSQL_PID: Developer
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd="/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrong@Passw0rd -Q 'SELECT 1'"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.23'
+        
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+          
+    - name: Build
+      working-directory: receiver/newrelicmssqlreceiver
+      run: go build ./...
+      
+    - name: Test
+      working-directory: receiver/newrelicmssqlreceiver
+      run: go test -v ./...
+      
+    - name: Test with race
+      working-directory: receiver/newrelicmssqlreceiver
+      run: go test -race -v ./...
+      
+    - name: Integration Test
+      working-directory: receiver/newrelicmssqlreceiver
+      env:
+        MSSQL_HOSTNAME: localhost
+        MSSQL_USERNAME: sa
+        MSSQL_PASSWORD: YourStrong@Passw0rd
+      run: go test -tags=integration -v ./...
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.23'
+        
+    - name: golangci-lint
+      uses: golangci/golangci-lint-action@v3
+      with:
+        version: latest
+        working-directory: receiver/newrelicmssqlreceiver

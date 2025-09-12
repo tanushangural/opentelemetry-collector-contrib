@@ -1,0 +1,265 @@
+type: newrelicmssql
+
+status:
+  class: receiver
+  stability:
+    development: [metrics]
+  distributions: [contrib]
+  codeowners:
+    active: [pkudikyala]
+
+resource_attributes:
+  mssql.instance.name:
+    description: The name of the MSSQL instance.
+    enabled: true
+    type: string
+  mssql.database.name:
+    description: The name of the MSSQL database.
+    enabled: true
+    type: string
+  server.address:
+    description: Name of the database host.
+    enabled: true
+    type: string
+  server.port:
+    description: Server port number.
+    enabled: true
+    type: int
+
+attributes:
+  database_name:
+    description: The name of the database.
+    type: string
+  instance_name:
+    description: The name of the MSSQL instance.
+    type: string
+  counter_name:
+    description: The name of the performance counter.
+    type: string
+  object_name:
+    description: The name of the performance object.
+    type: string
+  wait_type:
+    description: The type of wait.
+    type: string
+  category:
+    description: The category of the wait.
+    type: string
+  database_state:
+    description: The state of the database.
+    type: string
+    enum: [online, offline, restoring, recovering, pending_recovery, suspect, emergency]
+  lock_type:
+    description: The type of lock.
+    type: string
+  lock_resource:
+    description: The resource being locked.
+    type: string
+  connection_state:
+    description: The state of the connection.
+    type: string
+
+metrics:
+  mssql.instance.buffer_cache_hit_ratio:
+    enabled: true
+    description: Buffer cache hit ratio for the MSSQL instance.
+    unit: "%"
+    gauge:
+      value_type: double
+    attributes: [instance_name]
+  mssql.instance.page_life_expectancy:
+    enabled: true
+    description: Page life expectancy in seconds.
+    unit: s
+    gauge:
+      value_type: int
+    attributes: [instance_name]
+  mssql.instance.batch_requests_per_sec:
+    enabled: true
+    description: Number of batch requests per second.
+    unit: "{requests}/s"
+    gauge:
+      value_type: double
+    attributes: [instance_name]
+  mssql.instance.sql_compilations_per_sec:
+    enabled: true
+    description: Number of SQL compilations per second.
+    unit: "{compilations}/s"
+    gauge:
+      value_type: double
+    attributes: [instance_name]
+  mssql.instance.sql_recompilations_per_sec:
+    enabled: true
+    description: Number of SQL recompilations per second.
+    unit: "{recompilations}/s"
+    gauge:
+      value_type: double
+    attributes: [instance_name]
+  mssql.instance.processes_blocked:
+    enabled: true
+    description: Number of blocked processes.
+    unit: "{processes}"
+    gauge:
+      value_type: int
+    attributes: [instance_name]
+  mssql.instance.user_connections:
+    enabled: true
+    description: Number of user connections.
+    unit: "{connections}"
+    gauge:
+      value_type: int
+    attributes: [instance_name]
+  mssql.instance.memory_utilization_percentage:
+    enabled: true
+    description: Memory utilization percentage.
+    unit: "%"
+    gauge:
+      value_type: double
+    attributes: [instance_name]
+  mssql.instance.cpu_time_raw:
+    enabled: true
+    description: CPU time in raw format.
+    unit: ms
+    sum:
+      monotonic: true
+      aggregation_temporality: cumulative
+      value_type: int
+    attributes: [instance_name]
+  mssql.database.data_file_size:
+    enabled: true
+    description: Size of database data files.
+    unit: By
+    gauge:
+      value_type: int
+    attributes: [database_name, instance_name]
+  mssql.database.log_file_size:
+    enabled: true
+    description: Size of database log files.
+    unit: By
+    gauge:
+      value_type: int
+    attributes: [database_name, instance_name]
+  mssql.database.log_file_used_size:
+    enabled: true
+    description: Used size of database log files.
+    unit: By
+    gauge:
+      value_type: int
+    attributes: [database_name, instance_name]
+  mssql.database.log_file_used_percentage:
+    enabled: true
+    description: Used percentage of database log files.
+    unit: "%"
+    gauge:
+      value_type: double
+    attributes: [database_name, instance_name]
+  mssql.database.transactions_per_sec:
+    enabled: true
+    description: Number of transactions per second for the database.
+    unit: "{transactions}/s"
+    gauge:
+      value_type: double
+    attributes: [database_name, instance_name]
+  mssql.database.active_connections:
+    enabled: true
+    description: Number of active connections to the database.
+    unit: "{connections}"
+    gauge:
+      value_type: int
+    attributes: [database_name, instance_name]
+  mssql.database.state:
+    enabled: true
+    description: Current state of the database.
+    unit: "1"
+    gauge:
+      value_type: int
+    attributes: [database_name, instance_name, database_state]
+  mssql.wait_stats.waiting_tasks_count:
+    enabled: true
+    description: Number of waiting tasks.
+    unit: "{tasks}"
+    sum:
+      monotonic: true
+      aggregation_temporality: cumulative
+      value_type: int
+    attributes: [wait_type, category, instance_name]
+  mssql.wait_stats.wait_time_ms:
+    enabled: true
+    description: Total wait time in milliseconds.
+    unit: ms
+    sum:
+      monotonic: true
+      aggregation_temporality: cumulative
+      value_type: int
+    attributes: [wait_type, category, instance_name]
+  mssql.wait_stats.max_wait_time_ms:
+    enabled: true
+    description: Maximum wait time in milliseconds.
+    unit: ms
+    gauge:
+      value_type: int
+    attributes: [wait_type, category, instance_name]
+  mssql.deadlocks.total:
+    enabled: true
+    description: Total number of deadlocks.
+    unit: "{deadlocks}"
+    sum:
+      monotonic: true
+      aggregation_temporality: cumulative
+      value_type: int
+    attributes: [instance_name]
+  mssql.lock_stats.timeout_count:
+    enabled: true
+    description: Number of lock timeouts.
+    unit: "{timeouts}"
+    sum:
+      monotonic: true
+      aggregation_temporality: cumulative
+      value_type: int
+    attributes: [lock_type, lock_resource, instance_name]
+  mssql.lock_stats.wait_count:
+    enabled: true
+    description: Number of lock waits.
+    unit: "{waits}"
+    sum:
+      monotonic: true
+      aggregation_temporality: cumulative
+      value_type: int
+    attributes: [lock_type, lock_resource, instance_name]
+  mssql.lock_stats.wait_time_ms:
+    enabled: true
+    description: Total lock wait time in milliseconds.
+    unit: ms
+    sum:
+      monotonic: true
+      aggregation_temporality: cumulative
+      value_type: int
+    attributes: [lock_type, lock_resource, instance_name]
+  mssql.index_stats.page_splits_per_sec:
+    enabled: true
+    description: Number of page splits per second.
+    unit: "{splits}/s"
+    gauge:
+      value_type: double
+    attributes: [database_name, instance_name]
+  mssql.index_stats.page_lookups_per_sec:
+    enabled: true
+    description: Number of page lookups per second.
+    unit: "{lookups}/s"
+    gauge:
+      value_type: double
+    attributes: [database_name, instance_name]
+  mssql.index_stats.page_reads_per_sec:
+    enabled: true
+    description: Number of page reads per second.
+    unit: "{reads}/s"
+    gauge:
+      value_type: double
+    attributes: [database_name, instance_name]
+  mssql.index_stats.page_writes_per_sec:
+    enabled: true
+    description: Number of page writes per second.
+    unit: "{writes}/s"
+    gauge:
+      value_type: double
+    attributes: [database_name, instance_name]

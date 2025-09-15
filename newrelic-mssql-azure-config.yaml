@@ -22,10 +22,10 @@ exporters:
   debug:
     verbosity: detailed
 
-  otlp/newrelic:
-    endpoint: https://staging-otlp.nr-data.net:4318
+  otlphttp/newrelic:
+    endpoint: https://staging-otlp.nr-data.net
     headers:
-      api-key: 5848a0c9c053a43ff9c2cc5af33cfe60FFFFNRAL
+      api-key: ""
     compression: gzip
 
 service:
@@ -33,7 +33,7 @@ service:
     metrics:
       receivers: [newrelicmssql]
       processors: [batch]
-      exporters: [debug, otlp/newrelic]
+      exporters: [debug, otlphttp/newrelic]
   telemetry:
     logs:
       level: info  # Reduced log level

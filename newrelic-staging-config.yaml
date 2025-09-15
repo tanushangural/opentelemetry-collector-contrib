@@ -36,15 +36,10 @@ processors:
 
 exporters:
   # New Relic Staging Exporter
-  otlp/newrelic:
-    endpoint: https://staging-otlp.nr-data.net:4318
-    headers:
-      api-key: 5848a0c9c053a43ff9c2cc5af33cfe60FFFFNRAL
-    compression: gzip
   otlphttp/newrelic:
     endpoint: https://staging-otlp.nr-data.net
     headers:
-      api-key: "5848a0c9c053a43ff9c2cc5af33cfe60FFFFNRAL"
+      api-key: ""
     compression: gzip
     timeout: 30s
     retry_on_failure:

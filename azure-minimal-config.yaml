@@ -1,0 +1,61 @@
+receivers:
+  newrelicmssql:
+    hostname: 74.225.24.140
+    port: 1433
+    username: "pkudikyala-wind\\pkudikyala"
+    password: "Pkudikyala@1991"
+    collection_interval: 300s  # 5 minutes
+    enable_ssl: true
+    trust_server_certificate: true
+    timeout: 600  # 10 minutes - very generous for Azure
+    
+    # Disable resource-intensive metrics for remote connections
+    enable_buffer_metrics: false
+    enable_database_reserve_metrics: false
+    enable_disk_metrics_in_bytes: false
+    
+    # Connection optimization for Azure
+    extra_connection_url_args: "connection timeout=600;command timeout=600;dial timeout=180;keepalive=30;packet size=32767"
+    
+    # Enable only essential metrics (you can customize this based on metadata.yaml)
+    metrics:
+      mssql.instance.buffer_cache_hit_ratio:
+        enabled: true
+      mssql.instance.page_life_expectancy:
+        enabled: true
+      mssql.instance.batch_requests_per_sec:
+        enabled: true
+      mssql.instance.user_connections:
+        enabled: true
+      # Disable complex metrics that cause timeouts
+      mssql.wait_stats.waiting_tasks_count:
+        enabled: false
+      mssql.wait_stats.wait_time_ms:
+        enabled: false
+      mssql.lock_stats.timeout_count:
+        enabled: false
+      mssql.database.data_file_size:
+        enabled: false
+      mssql.index_stats.page_splits_per_sec:
+        enabled: false
+
+processors:
+  batch:
+    timeout: 30s
+    send_batch_size: 100
+
+exporters:
+  debug:
+    verbosity: normal
+  file:
+    path: /Users/pkudikyala/Documents/forked_repos/tanush_Otel/opentelemetry-collector-contrib/azure-metrics.json
+
+service:
+  pipelines:
+    metrics:
+      receivers: [newrelicmssql]
+      processors: [batch]
+      exporters: [debug, file]
+  telemetry:
+    logs:
+      level: info

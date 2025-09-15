@@ -1,0 +1,35 @@
+receivers:
+  newrelicmssql:
+    hostname: 74.225.24.140
+    port: 1433
+    username: "pkudikyala-wind\\pkudikyala"
+    password: "Pkudikyala@1991"
+    collection_interval: 120s  # Very long interval for testing
+    enable_ssl: true
+    trust_server_certificate: true
+    timeout: 180  # 3 minutes timeout
+    enable_buffer_metrics: false
+    enable_database_reserve_metrics: false
+    enable_disk_metrics_in_bytes: false
+    extra_connection_url_args: "connection timeout=180;command timeout=180;dial timeout=60"
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 100
+
+exporters:
+  debug:
+    verbosity: normal
+  file:
+    path: /Users/pkudikyala/Documents/forked_repos/tanush_Otel/opentelemetry-collector-contrib/metrics-output.json
+
+service:
+  pipelines:
+    metrics:
+      receivers: [newrelicmssql]
+      processors: [batch]
+      exporters: [debug, file]
+  telemetry:
+    logs:
+      level: info

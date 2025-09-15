@@ -5,7 +5,6 @@ package newrelicmssqlreceiver // import "github.com/open-telemetry/opentelemetry
 
 import (
 	"errors"
-	"time"
 
 	"go.opentelemetry.io/collector/config/configopaque"
 	"go.opentelemetry.io/collector/config/configtls"

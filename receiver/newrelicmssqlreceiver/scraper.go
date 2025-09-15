@@ -11,6 +11,7 @@ import (
 	"time"
 
 	_ "github.com/microsoft/go-mssqldb" // Register the MSSQL driver
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver"
@@ -34,7 +35,7 @@ func newMSSQLScraper(params receiver.Settings, cfg *Config) *mssqlScraper {
 	}
 }
 
-func (m *mssqlScraper) start(ctx context.Context, _ receiver.Host) error {
+func (m *mssqlScraper) start(ctx context.Context, _ component.Host) error {
 	connectionString := m.buildConnectionString()
 	
 	db, err := sql.Open("sqlserver", connectionString)
@@ -68,36 +69,49 @@ func (m *mssqlScraper) scrape(ctx context.Context) (pmetric.Metrics, error) {
 		return pmetric.NewMetrics(), fmt.Errorf("database connection not established")
 	}
 
-	// Set a timeout for the entire scraping operation
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(m.cfg.Timeout)*time.Second)
-	defer cancel()
-
+	// For Azure SQL Server, use individual timeouts per operation instead of global timeout
+	// This prevents one slow query from timing out all subsequent queries
+	individualTimeout := time.Duration(m.cfg.Timeout) * time.Second / 3
 	now := pcommon.NewTimestampFromTime(time.Now())
 
-	// Collect instance metrics
-	if err := m.collectInstanceMetrics(ctx, now); err != nil {
+	m.logger.Info("Starting scrape with configured timeout", 
+		zap.Int("timeout", m.cfg.Timeout),
+		zap.Duration("individual_timeout", individualTimeout))
+
+	// Collect instance metrics with individual timeout
+	instanceCtx, instanceCancel := context.WithTimeout(context.Background(), individualTimeout)
+	if err := m.collectInstanceMetrics(instanceCtx, now); err != nil {
 		m.logger.Error("Failed to collect instance metrics", zap.Error(err))
 	}
+	instanceCancel()
 
-	// Collect database metrics
-	if err := m.collectDatabaseMetrics(ctx, now); err != nil {
+	// Collect database metrics with individual timeout
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), individualTimeout)
+	if err := m.collectDatabaseMetrics(dbCtx, now); err != nil {
 		m.logger.Error("Failed to collect database metrics", zap.Error(err))
 	}
+	dbCancel()
 
-	// Collect wait stats
-	if err := m.collectWaitStats(ctx, now); err != nil {
+	// Collect wait stats with individual timeout
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), individualTimeout)
+	if err := m.collectWaitStats(waitCtx, now); err != nil {
 		m.logger.Error("Failed to collect wait stats", zap.Error(err))
 	}
+	waitCancel()
 
-	// Collect lock stats
-	if err := m.collectLockStats(ctx, now); err != nil {
+	// Collect lock stats with individual timeout
+	lockCtx, lockCancel := context.WithTimeout(context.Background(), individualTimeout)
+	if err := m.collectLockStats(lockCtx, now); err != nil {
 		m.logger.Error("Failed to collect lock stats", zap.Error(err))
 	}
+	lockCancel()
 
-	// Collect index stats
-	if err := m.collectIndexStats(ctx, now); err != nil {
+	// Collect index stats with individual timeout
+	indexCtx, indexCancel := context.WithTimeout(context.Background(), individualTimeout)
+	if err := m.collectIndexStats(indexCtx, now); err != nil {
 		m.logger.Error("Failed to collect index stats", zap.Error(err))
 	}
+	indexCancel()
 
 	return m.mb.Emit(), nil
 }
@@ -138,7 +152,13 @@ func (m *mssqlScraper) buildConnectionString() string {
 
 	if m.cfg.Timeout > 0 {
 		parts = append(parts, fmt.Sprintf("connection timeout=%d", m.cfg.Timeout))
+		parts = append(parts, fmt.Sprintf("command timeout=%d", m.cfg.Timeout))
 	}
+	
+	// Azure SQL-optimized connection parameters
+	parts = append(parts, "dial timeout=180")     // 3 minutes for initial connection
+	parts = append(parts, "keepalive=30")         // Keep connection alive
+	parts = append(parts, "packet size=32767")    // Larger packet size for better throughput
 
 	if m.cfg.ExtraConnectionURLArgs != "" {
 		parts = append(parts, m.cfg.ExtraConnectionURLArgs)

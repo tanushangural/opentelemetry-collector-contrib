@@ -59,7 +59,7 @@ receivers:
   newrelicsqlserver:
     # SQL Server connection configuration
     # ⚠️  REPLACE THESE WITH YOUR ACTUAL VALUES ⚠️
-    hostname: "20.235.45.215"                    # e.g., "your-sql-server.com" or "192.168.1.100"
+    hostname: "20.235.136.68"                    # e.g., "your-sql-server.com" or "192.168.1.100"
     port: "1433"                # Default SQL Server port
     username: "sa"              # e.g., "monitoring_user"
     password: "AbAnTaPassword@123"              # Your SQL Server password
@@ -71,7 +71,7 @@ receivers:
     # connection_timeout: 30s
     
     # Collection interval (how often to collect metrics)
-    collection_interval: 60s
+    collection_interval: 15s
     
     # Optional: Initial delay before starting collection
     # initial_delay: 10s
@@ -82,6 +82,8 @@ receivers:
     # Query monitoring thresholds (required when enable_query_monitoring is true)
     query_monitoring_response_time_threshold: 1  # milliseconds - queries slower than this will be monitored
     query_monitoring_count_threshold: 5          # minimum execution count for queries to be monitored
+    query_monitoring_fetch_interval: 15       # how often to fetch query performance metrics 
+
 
 # Exporters send telemetry data to destinations
 exporters:

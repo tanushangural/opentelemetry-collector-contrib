@@ -175,6 +175,47 @@ func (s *QueryPerformanceScraper) ScrapeSlowQueryMetrics(ctx context.Context, sc
     return nil
 }
 
+// ScrapeWaitTimeAnalysisMetrics collects wait time analysis metrics using engine-specific queries
+func (s *QueryPerformanceScraper) ScrapeWaitTimeAnalysisMetrics(ctx context.Context, scopeMetrics pmetric.ScopeMetrics, topN, textTruncateLimit int) error {
+    s.logger.Debug("Scraping SQL Server wait time analysis metrics")
+
+    // Format the wait time analysis query with parameters
+    formattedQuery := fmt.Sprintf(queries.WaitTimeAnalysisQuery, topN, textTruncateLimit)
+
+    // Execute wait time analysis query
+    s.logger.Debug("Executing wait time analysis query",
+        zap.String("query", queries.TruncateQuery(formattedQuery, 100)),
+        zap.String("engine_type", queries.GetEngineTypeName(s.engineEdition)),
+        zap.Int("top_n", topN),
+        zap.Int("text_truncate_limit", textTruncateLimit))
+
+    var results []models.WaitTimeAnalysis
+    if err := s.connection.Query(ctx, &results, formattedQuery); err != nil {
+        s.logger.Error("Failed to execute wait time analysis query",
+            zap.Error(err),
+            zap.String("query", queries.TruncateQuery(formattedQuery, 100)),
+            zap.Int("engine_edition", s.engineEdition))
+        return fmt.Errorf("failed to execute wait time analysis query: %w", err)
+    }
+
+    s.logger.Debug("Query executed successfully", zap.Int("result_count", len(results)))
+
+    // Process each wait time analysis result
+    for i, result := range results {
+        if err := s.processWaitTimeAnalysisMetrics(result, scopeMetrics, i); err != nil {
+            s.logger.Error("Failed to process wait time analysis metrics", 
+                zap.Error(err), 
+                zap.Int("result_index", i))
+            continue // Continue processing other results
+        }
+    }
+
+    s.logger.Debug("Successfully scraped wait time analysis metrics",
+        zap.Int("wait_time_analysis_count", len(results)))
+
+    return nil
+}
+
 // processSlowQueryMetrics processes slow query metrics and creates OpenTelemetry metrics
 func (s *QueryPerformanceScraper) processSlowQueryMetrics(result models.SlowQuery, scopeMetrics pmetric.ScopeMetrics, index int) error {
     // Create a single gauge metric for the slow query event
@@ -309,6 +350,92 @@ func (s *QueryPerformanceScraper) processBlockingSessionMetrics(result models.Bl
         zap.Any("blocked_spid", result.BlockedSPID),
         zap.Any("wait_type", result.WaitType),
         zap.Any("wait_time_seconds", result.WaitTimeInSeconds))
+
+    return nil
+}
+
+// processWaitTimeAnalysisMetrics processes wait time analysis metrics and creates OpenTelemetry metrics
+func (s *QueryPerformanceScraper) processWaitTimeAnalysisMetrics(result models.WaitTimeAnalysis, scopeMetrics pmetric.ScopeMetrics, index int) error {
+    // Create a single gauge metric for the wait time analysis event
+    metric := scopeMetrics.Metrics().AppendEmpty()
+    metric.SetName("mssql.wait.time_ms")
+    metric.SetDescription("SQL Server query wait time analysis in milliseconds")
+    metric.SetUnit("ms")
+
+    // Create gauge metric
+    gauge := metric.SetEmptyGauge()
+    dataPoint := gauge.DataPoints().AppendEmpty()
+    dataPoint.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+    dataPoint.SetStartTimestamp(s.startTime)
+    
+    // Set the actual wait time value as the metric value
+    if result.TotalWaitTimeMs != nil {
+        dataPoint.SetDoubleValue(*result.TotalWaitTimeMs)
+    } else {
+        dataPoint.SetDoubleValue(0)
+    }
+
+    // Set all wait time analysis attributes in nri-mssql format
+    attrs := dataPoint.Attributes()
+    
+    // Core wait time analysis data
+    if result.QueryID != nil {
+        // Convert binary query_id to hex string like other metrics
+        attrs.PutStr("query_id", *result.QueryID)
+        attrs.PutStr("queryId", *result.QueryID) // Also add camelCase version for compatibility
+    }
+    if result.DatabaseName != nil {
+        attrs.PutStr("database_name", *result.DatabaseName)
+        attrs.PutStr("databaseName", *result.DatabaseName) // Also add camelCase version
+    }
+    if result.QueryText != nil {
+        attrs.PutStr("query_text", *result.QueryText)
+        attrs.PutStr("queryText", *result.QueryText) // Also add camelCase version
+    }
+    if result.WaitCategory != nil {
+        attrs.PutStr("wait_category", *result.WaitCategory)
+        attrs.PutStr("waitCategory", *result.WaitCategory) // Also add camelCase version
+    }
+    if result.TotalWaitTimeMs != nil {
+        attrs.PutDouble("total_wait_time_ms", *result.TotalWaitTimeMs)
+    }
+    if result.AvgWaitTimeMs != nil {
+        attrs.PutDouble("avg_wait_time_ms", *result.AvgWaitTimeMs)
+    }
+    if result.WaitEventCount != nil {
+        attrs.PutInt("wait_event_count", *result.WaitEventCount)
+    }
+    if result.LastExecutionTime != nil {
+        attrs.PutStr("last_execution_time", result.LastExecutionTime.Format("2006-01-02T15:04:05Z"))
+    }
+    // CollectionTimestamp is not a pointer, so check if it's not zero
+    if !result.CollectionTimestamp.IsZero() {
+        attrs.PutStr("collection_timestamp", result.CollectionTimestamp.Format("2006-01-02T15:04:05Z"))
+        attrs.PutStr("timestamp", result.CollectionTimestamp.Format("2006-01-02T15:04:05Z")) // Alternative format
+        // Also add Unix timestamp for New Relic
+        attrs.PutInt("timestamp_ms", result.CollectionTimestamp.UnixMilli())
+    }
+
+    // Set the event type to match nri-mssql format
+    attrs.PutStr("event_type", "MSSQLWaitTimeAnalysis")
+    attrs.PutStr("eventType", "MSSQLWaitTimeAnalysis") // Also add camelCase version
+    
+    // Add standard New Relic attributes
+    attrs.PutStr("instrumentation.name", "com.newrelic.mssql")
+    attrs.PutStr("instrumentation.provider", "opentelemetry")
+    attrs.PutStr("newrelic.source", "api.metrics.otlp")
+    
+    // Add metric type for New Relic
+    attrs.PutStr("metric.type", "gauge")
+    
+
+    s.logger.Debug("Processed wait time analysis event",
+        zap.String("event_type", "MSSQLWaitTimeAnalysis"),
+        zap.Any("query_id", result.QueryID),
+        zap.Any("database_name", result.DatabaseName),
+        zap.Any("wait_category", result.WaitCategory),
+        zap.Any("total_wait_time_ms", result.TotalWaitTimeMs),
+        zap.Any("wait_event_count", result.WaitEventCount))
 
     return nil
 }

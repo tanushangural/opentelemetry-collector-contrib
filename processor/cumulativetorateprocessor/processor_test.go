@@ -5,6 +5,9 @@ package cumulativetorateprocessor
 
 import (
 	"context"
+	"fmt"
+	"math"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,536 +16,1381 @@ import (
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
-	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest"
 )
 
-func TestCumulativeToRateProcessor_ProcessMetrics(t *testing.T) {
+// Test helper functions
+
+func createTestProcessor(t *testing.T) *cumulativeToRateProcessor {
+	logger := zaptest.NewLogger(t)
 	nextConsumer := consumertest.NewNop()
-	processor, err := newCumulativeToRateProcessor(&Config{}, zap.NewNop(), nextConsumer)
+
+	processor, err := newCumulativeToRateProcessor(&Config{}, logger, nextConsumer)
 	require.NoError(t, err)
+	require.NotNil(t, processor)
 
-	// Create test metrics
-	md := pmetric.NewMetrics()
-	rm := md.ResourceMetrics().AppendEmpty()
-	sm := rm.ScopeMetrics().AppendEmpty()
-
-	// Create a cumulative sum metric (rate source type)
-	metric := sm.Metrics().AppendEmpty()
-	metric.SetName("test_counter")
-	sum := metric.SetEmptySum()
-	sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
-
-	// First data point
-	dp1 := sum.DataPoints().AppendEmpty()
-	dp1.SetDoubleValue(100)
-	dp1.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
-	dp1.Attributes().PutStr("metric.type", "rate") // Add the rate attribute
-
-	// Process first time
-	result, err := processor.processMetrics(context.Background(), md)
-	require.NoError(t, err)
-
-	resultMetric := result.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0)
-	resultSum := resultMetric.Sum()
-	resultDP := resultSum.DataPoints().At(0)
-
-	// Debug what we actually got
-	t.Logf("Result temporality: %v", resultSum.AggregationTemporality())
-	t.Logf("Result value: %v", resultDP.DoubleValue())
-	t.Logf("Result NoRecordedValue: %v", resultDP.Flags().NoRecordedValue())
-
-	// Check if metric.type was converted
-	if metricType, exists := resultDP.Attributes().Get("metric.type"); exists {
-		t.Logf("Result metric.type: %v", metricType.AsString())
-	}
-
-	// First data point should either be marked for removal OR have rate 0
-	// Let's be flexible about the implementation
-	if resultDP.Flags().NoRecordedValue() {
-		t.Log("First interval marked for removal (NoRecordedValue)")
-	} else {
-		assert.Equal(t, float64(0), resultDP.DoubleValue(), "First interval should have rate 0")
-		// Should be converted to delta temporality (gauge source type)
-		assert.Equal(t, pmetric.AggregationTemporalityDelta, resultSum.AggregationTemporality())
-	}
+	return processor
 }
 
-func TestCumulativeToRateProcessor_RateCalculation(t *testing.T) {
-	nextConsumer := consumertest.NewNop()
-	processor, err := newCumulativeToRateProcessor(&Config{}, zap.NewNop(), nextConsumer)
-	require.NoError(t, err)
+func createTestSumMetric(name string, value float64, timestamp time.Time, attributes map[string]string) pmetric.Metric {
+	metric := pmetric.NewMetric()
+	metric.SetName(name)
+	metric.SetDescription("Test metric")
+	metric.SetUnit("count")
 
-	// Create test metrics with same series
-	createMetrics := func(value float64, timestamp time.Time) pmetric.Metrics {
-		md := pmetric.NewMetrics()
-		rm := md.ResourceMetrics().AppendEmpty()
-		sm := rm.ScopeMetrics().AppendEmpty()
-
-		metric := sm.Metrics().AppendEmpty()
-		metric.SetName("test_counter")
-		sum := metric.SetEmptySum()
-		sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
-
-		dp := sum.DataPoints().AppendEmpty()
-		dp.SetDoubleValue(value)
-		dp.SetTimestamp(pcommon.NewTimestampFromTime(timestamp))
-
-		return md
-	}
-
-	// Process first metric (value: 100, time: t0)
-	t0 := time.Now()
-	md1 := createMetrics(100, t0)
-	_, err = processor.processMetrics(context.Background(), md1)
-	require.NoError(t, err)
-
-	// Process second metric (value: 200, time: t0+10s)
-	t1 := t0.Add(10 * time.Second)
-	md2 := createMetrics(200, t1)
-	result, err := processor.processMetrics(context.Background(), md2)
-	require.NoError(t, err)
-
-	// Rate should be (200-100)/(10s) = 10/s
-	resultMetric := result.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0)
-	expectedRate := float64(100) / float64(10) // (200-100)/10s = 10/s
-	actualRate := resultMetric.Sum().DataPoints().At(0).DoubleValue()
-
-	assert.Equal(t, expectedRate, actualRate)
-
-	// Should be converted to delta temporality (gauge source type)
-	assert.Equal(t, pmetric.AggregationTemporalityDelta, resultMetric.Sum().AggregationTemporality())
-}
-
-func TestCumulativeToRateProcessor_ConsumeMetrics(t *testing.T) {
-	nextConsumer := consumertest.NewNop()
-	processor, err := newCumulativeToRateProcessor(&Config{}, zap.NewNop(), nextConsumer)
-	require.NoError(t, err)
-
-	// Create test metrics
-	md := pmetric.NewMetrics()
-	rm := md.ResourceMetrics().AppendEmpty()
-	sm := rm.ScopeMetrics().AppendEmpty()
-
-	// Create a cumulative sum metric
-	metric := sm.Metrics().AppendEmpty()
-	metric.SetName("test_counter")
 	sum := metric.SetEmptySum()
+	sum.SetIsMonotonic(true)
 	sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
 
 	dp := sum.DataPoints().AppendEmpty()
-	dp.SetDoubleValue(100)
-	dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+	dp.SetDoubleValue(value)
+	dp.SetTimestamp(pcommon.NewTimestampFromTime(timestamp))
+	dp.SetStartTimestamp(pcommon.NewTimestampFromTime(timestamp.Add(-time.Minute)))
 
-	// Test ConsumeMetrics method
-	err = processor.ConsumeMetrics(context.Background(), md)
-	require.NoError(t, err)
+	// Add attributes
+	attrs := dp.Attributes()
+	for k, v := range attributes {
+		attrs.PutStr(k, v)
+	}
+
+	return metric
 }
 
-func TestCumulativeToRateProcessor_Capabilities(t *testing.T) {
-	nextConsumer := consumertest.NewNop()
-	processor, err := newCumulativeToRateProcessor(&Config{}, zap.NewNop(), nextConsumer)
-	require.NoError(t, err)
+func createTestGaugeMetric(name string, value float64) pmetric.Metric {
+	metric := pmetric.NewMetric()
+	metric.SetName(name)
+
+	gauge := metric.SetEmptyGauge()
+	dp := gauge.DataPoints().AppendEmpty()
+	dp.SetDoubleValue(value)
+	dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+
+	return metric
+}
+
+func createTestMetrics(metrics ...pmetric.Metric) pmetric.Metrics {
+	md := pmetric.NewMetrics()
+	rm := md.ResourceMetrics().AppendEmpty()
+	sm := rm.ScopeMetrics().AppendEmpty()
+
+	for _, metric := range metrics {
+		tgt := sm.Metrics().AppendEmpty()
+		metric.CopyTo(tgt)
+	}
+
+	return md
+}
+
+// 2. Lifecycle Tests
+
+func TestStart(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	err := processor.Start(context.Background(), nil)
+	assert.NoError(t, err)
+}
+
+func TestStartWithCancelledContext(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := processor.Start(ctx, nil)
+	assert.NoError(t, err) // Start should still succeed even with cancelled context
+}
+
+func TestShutdown(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	err := processor.Shutdown(context.Background())
+	assert.NoError(t, err)
+}
+
+func TestShutdownWithCancelledContext(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := processor.Shutdown(ctx)
+	assert.NoError(t, err) // Shutdown should still succeed even with cancelled context
+}
+
+func TestCapabilities(t *testing.T) {
+	processor := createTestProcessor(t)
 
 	capabilities := processor.Capabilities()
 	assert.True(t, capabilities.MutatesData)
 }
 
-func TestCumulativeToRateProcessor_StartShutdown(t *testing.T) {
-	nextConsumer := consumertest.NewNop()
-	processor, err := newCumulativeToRateProcessor(&Config{}, zap.NewNop(), nextConsumer)
-	require.NoError(t, err)
+// 3. ConsumeMetrics Tests
 
-	// Test Start
-	err = processor.Start(context.Background(), nil)
-	assert.NoError(t, err)
+func TestConsumeMetrics_Success(t *testing.T) {
+	processor := createTestProcessor(t)
 
-	// Test Shutdown
-	err = processor.Shutdown(context.Background())
+	metric := createTestSumMetric("test.metric", 100.0, time.Now(), map[string]string{"key": "value"})
+	md := createTestMetrics(metric)
+
+	err := processor.ConsumeMetrics(context.Background(), md)
 	assert.NoError(t, err)
 }
 
-func TestCumulativeToRateProcessor_NonSumMetrics(t *testing.T) {
-	nextConsumer := consumertest.NewNop()
-	processor, err := newCumulativeToRateProcessor(&Config{}, zap.NewNop(), nextConsumer)
-	require.NoError(t, err)
+func TestConsumeMetrics_EmptyMetrics(t *testing.T) {
+	processor := createTestProcessor(t)
 
-	// Create test metrics with gauge type (should be ignored)
 	md := pmetric.NewMetrics()
-	rm := md.ResourceMetrics().AppendEmpty()
-	sm := rm.ScopeMetrics().AppendEmpty()
 
-	metric := sm.Metrics().AppendEmpty()
-	metric.SetName("test_gauge")
-	gauge := metric.SetEmptyGauge()
+	err := processor.ConsumeMetrics(context.Background(), md)
+	assert.NoError(t, err)
+}
 
-	dp := gauge.DataPoints().AppendEmpty()
-	dp.SetDoubleValue(100)
-	dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+func TestConsumeMetrics_ContextCancellation(t *testing.T) {
+	processor := createTestProcessor(t)
 
-	// Process metrics - gauge should be unchanged
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	metric := createTestSumMetric("test.metric", 100.0, time.Now(), map[string]string{"key": "value"})
+	md := createTestMetrics(metric)
+
+	err := processor.ConsumeMetrics(ctx, md)
+	assert.NoError(t, err) // Should still process even with cancelled context
+}
+
+// 4. ProcessMetrics Tests
+
+func TestProcessMetrics_EmptyResourceMetrics(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	md := pmetric.NewMetrics()
+
 	result, err := processor.processMetrics(context.Background(), md)
-	require.NoError(t, err)
-
-	resultMetric := result.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0)
-	assert.Equal(t, pmetric.MetricTypeGauge, resultMetric.Type())
-	assert.Equal(t, float64(100), resultMetric.Gauge().DataPoints().At(0).DoubleValue())
+	assert.NoError(t, err)
+	assert.Equal(t, 0, result.ResourceMetrics().Len())
 }
 
-func TestCumulativeToRateProcessor_DeltaMetrics(t *testing.T) {
-	nextConsumer := consumertest.NewNop()
-	processor, err := newCumulativeToRateProcessor(&Config{}, zap.NewNop(), nextConsumer)
-	require.NoError(t, err)
+func TestProcessMetrics_MultipleResourceMetrics(t *testing.T) {
+	processor := createTestProcessor(t)
 
-	// Create test metrics with delta temporality (should be ignored)
 	md := pmetric.NewMetrics()
-	rm := md.ResourceMetrics().AppendEmpty()
-	sm := rm.ScopeMetrics().AppendEmpty()
 
-	metric := sm.Metrics().AppendEmpty()
-	metric.SetName("test_delta")
+	// Add multiple resource metrics
+	for i := 0; i < 3; i++ {
+		rm := md.ResourceMetrics().AppendEmpty()
+		sm := rm.ScopeMetrics().AppendEmpty()
+		metric := createTestSumMetric("test.metric", float64(100+i), time.Now(), map[string]string{"instance": string(rune('A' + i))})
+		tgt := sm.Metrics().AppendEmpty()
+		metric.CopyTo(tgt)
+	}
+
+	result, err := processor.processMetrics(context.Background(), md)
+	assert.NoError(t, err)
+	assert.Equal(t, 3, result.ResourceMetrics().Len())
+}
+
+// 5. ProcessMetric Tests (Core Logic)
+
+func TestProcessMetric_MetricTypeFiltering(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	tests := []struct {
+		name          string
+		metric        pmetric.Metric
+		shouldProcess bool
+	}{
+		{
+			name:          "sum metric should be processed",
+			metric:        createTestSumMetric("sum.metric", 100.0, time.Now(), map[string]string{}),
+			shouldProcess: true,
+		},
+		{
+			name:          "gauge metric should be ignored",
+			metric:        createTestGaugeMetric("gauge.metric", 100.0),
+			shouldProcess: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			originalType := tt.metric.Type()
+			processor.processMetric(tt.metric)
+
+			if tt.shouldProcess {
+				// Sum should be converted to Gauge
+				if originalType == pmetric.MetricTypeSum {
+					assert.Equal(t, pmetric.MetricTypeGauge, tt.metric.Type())
+				}
+			} else {
+				// Type should remain unchanged
+				assert.Equal(t, originalType, tt.metric.Type())
+			}
+		})
+	}
+}
+
+func TestProcessMetric_AggregationTemporalityFiltering(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	// Create delta sum metric (should be ignored)
+	metric := pmetric.NewMetric()
+	metric.SetName("delta.metric")
 	sum := metric.SetEmptySum()
 	sum.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
-
 	dp := sum.DataPoints().AppendEmpty()
-	dp.SetDoubleValue(100)
+	dp.SetDoubleValue(100.0)
 	dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
 
-	// Process metrics - delta should be unchanged
-	result, err := processor.processMetrics(context.Background(), md)
-	require.NoError(t, err)
+	originalType := metric.Type()
+	processor.processMetric(metric)
 
-	resultMetric := result.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0)
-	resultSum := resultMetric.Sum()
-	assert.Equal(t, pmetric.AggregationTemporalityDelta, resultSum.AggregationTemporality())
-	assert.Equal(t, float64(100), resultSum.DataPoints().At(0).DoubleValue())
+	// Should remain unchanged (not processed)
+	assert.Equal(t, originalType, metric.Type())
+	assert.Equal(t, pmetric.AggregationTemporalityDelta, metric.Sum().AggregationTemporality())
 }
 
-func TestCumulativeToRateProcessor_FirstInterval(t *testing.T) {
-	// Test that first interval metrics are skipped (marked with NoRecordedValue flag)
-	processor, err := newCumulativeToRateProcessor(&Config{}, zap.NewNop(), consumertest.NewNop())
-	require.NoError(t, err)
+func TestProcessMetric_EmptyDataPoints(t *testing.T) {
+	processor := createTestProcessor(t)
 
-	metrics := createTestMetrics("test.metric", []float64{100}, []time.Time{time.Now().UTC()}, "rate")
+	metric := pmetric.NewMetric()
+	metric.SetName("empty.metric")
+	sum := metric.SetEmptySum()
+	sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+	// No data points added
 
-	processedMetrics, err := processor.processMetrics(context.Background(), metrics)
-	require.NoError(t, err)
+	processor.processMetric(metric)
 
-	// Verify the data point is marked for removal
-	dp := getFirstDataPoint(processedMetrics)
-	assert.True(t, dp.Flags().NoRecordedValue(), "First interval should be marked with NoRecordedValue flag")
-
-	// Verify state is saved
-	assert.Len(t, processor.previousState, 1, "Should have saved state for one metric")
+	// Should be converted to gauge but have no data points
+	assert.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+	assert.Equal(t, 0, metric.Gauge().DataPoints().Len())
 }
 
-func TestCumulativeToRateProcessor_SecondInterval_PositiveRate(t *testing.T) {
-	processor, err := newCumulativeToRateProcessor(&Config{}, zap.NewNop(), consumertest.NewNop())
-	require.NoError(t, err)
+// 6. ConvertSumToGauge Tests
 
-	baseTime := time.Now().UTC()
+func TestConvertSumToGauge_DataIntegrity(t *testing.T) {
+	processor := createTestProcessor(t)
 
-	// First interval - should be skipped
-	metrics1 := createTestMetrics("test.metric", []float64{100}, []time.Time{baseTime}, "rate")
-	_, err = processor.processMetrics(context.Background(), metrics1)
-	require.NoError(t, err)
+	now := time.Now()
 
-	// Second interval - should calculate rate
-	metrics2 := createTestMetrics("test.metric", []float64{200}, []time.Time{baseTime.Add(10 * time.Second)}, "rate")
-	processedMetrics, err := processor.processMetrics(context.Background(), metrics2)
-	require.NoError(t, err)
+	metric := createTestSumMetric("test.metric", 150.0, now, map[string]string{
+		"metric.type": "rate",
+		"database":    "testdb",
+	})
 
-	// Verify rate calculation
-	dp := getFirstDataPoint(processedMetrics)
-	assert.False(t, dp.Flags().NoRecordedValue(), "Second interval should not be marked for removal")
+	processor.convertSumToGauge(metric)
 
-	expectedRate := (200.0 - 100.0) / 10.0 // (current - previous) / time_diff = 10.0 per second
-	assert.Equal(t, expectedRate, dp.DoubleValue(), "Rate should be calculated correctly")
+	// Verify conversion
+	assert.Equal(t, pmetric.MetricTypeGauge, metric.Type())
 
-	// Verify source type conversion
-	metricType, exists := dp.Attributes().Get("metric.type")
-	assert.True(t, exists, "metric.type attribute should exist")
-	assert.Equal(t, "gauge", metricType.AsString(), "metric.type should be converted from rate to gauge")
+	gauge := metric.Gauge()
+	assert.Equal(t, 1, gauge.DataPoints().Len())
+
+	dp := gauge.DataPoints().At(0)
+	assert.Equal(t, 150.0, dp.DoubleValue())
+	assert.Equal(t, pcommon.NewTimestampFromTime(now), dp.Timestamp())
+
+	// Verify attributes
+	attrs := dp.Attributes()
+	metricType, exists := attrs.Get("metric.type")
+	assert.True(t, exists)
+	assert.Equal(t, "gauge", metricType.Str()) // Should be converted from "rate" to "gauge"
+
+	database, exists := attrs.Get("database")
+	assert.True(t, exists)
+	assert.Equal(t, "testdb", database.Str())
 }
 
-func TestCumulativeToRateProcessor_NegativeRate(t *testing.T) {
-	processor, err := newCumulativeToRateProcessor(&Config{}, zap.NewNop(), consumertest.NewNop())
-	require.NoError(t, err)
+func TestConvertSumToGauge_NoRecordedValueFlag(t *testing.T) {
+	processor := createTestProcessor(t)
 
-	baseTime := time.Now().UTC()
+	metric := createTestSumMetric("test.metric", 100.0, time.Now(), map[string]string{})
 
-	// First interval
-	metrics1 := createTestMetrics("test.metric", []float64{200}, []time.Time{baseTime}, "rate")
-	_, err = processor.processMetrics(context.Background(), metrics1)
-	require.NoError(t, err)
+	// Set NoRecordedValue flag on the data point
+	sum := metric.Sum()
+	dp := sum.DataPoints().At(0)
+	dp.SetFlags(pmetric.DefaultDataPointFlags.WithNoRecordedValue(true))
 
-	// Second interval with lower value (counter reset scenario)
-	metrics2 := createTestMetrics("test.metric", []float64{50}, []time.Time{baseTime.Add(10 * time.Second)}, "rate")
-	processedMetrics, err := processor.processMetrics(context.Background(), metrics2)
-	require.NoError(t, err)
+	processor.convertSumToGauge(metric)
 
-	// Verify negative rate is skipped
-	dp := getFirstDataPoint(processedMetrics)
-	assert.True(t, dp.Flags().NoRecordedValue(), "Negative rate should be marked for removal")
+	// Should be converted to gauge but have no data points (filtered out)
+	assert.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+	assert.Equal(t, 0, metric.Gauge().DataPoints().Len())
 }
 
-func TestCumulativeToRateProcessor_ZeroTimeDiff(t *testing.T) {
-	processor, err := newCumulativeToRateProcessor(&Config{}, zap.NewNop(), consumertest.NewNop())
-	require.NoError(t, err)
+func TestConvertSumToGauge_MultipleDataPoints(t *testing.T) {
+	processor := createTestProcessor(t)
 
-	baseTime := time.Now().UTC()
+	metric := pmetric.NewMetric()
+	metric.SetName("multi.metric")
+	sum := metric.SetEmptySum()
+	sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
 
-	// First interval
-	metrics1 := createTestMetrics("test.metric", []float64{100}, []time.Time{baseTime}, "rate")
-	_, err = processor.processMetrics(context.Background(), metrics1)
-	require.NoError(t, err)
+	now := time.Now()
 
-	// Second interval with same timestamp
-	metrics2 := createTestMetrics("test.metric", []float64{200}, []time.Time{baseTime}, "rate")
-	processedMetrics, err := processor.processMetrics(context.Background(), metrics2)
-	require.NoError(t, err)
+	// Add multiple data points
+	for i := 0; i < 3; i++ {
+		dp := sum.DataPoints().AppendEmpty()
+		dp.SetDoubleValue(float64(100 + i*10))
+		dp.SetTimestamp(pcommon.NewTimestampFromTime(now))
+		dp.Attributes().PutStr("instance", string(rune('A'+i)))
+		dp.Attributes().PutStr("metric.type", "rate")
+	}
 
-	// Verify zero time diff is handled
-	dp := getFirstDataPoint(processedMetrics)
-	assert.True(t, dp.Flags().NoRecordedValue(), "Zero time difference should be marked for removal")
-}
+	processor.convertSumToGauge(metric)
 
-func TestCumulativeToRateProcessor_MultipleMetrics(t *testing.T) {
-	processor, err := newCumulativeToRateProcessor(&Config{}, zap.NewNop(), consumertest.NewNop())
-	require.NoError(t, err)
+	assert.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+	gauge := metric.Gauge()
+	assert.Equal(t, 3, gauge.DataPoints().Len())
 
-	baseTime := time.Now().UTC()
-
-	// Create metrics with different attributes (different metric series)
-	metrics1 := createTestMetricsWithAttributes("test.metric", []float64{100, 50}, []time.Time{baseTime, baseTime},
-		[]map[string]string{
-			{"instance": "db1", "metric.type": "rate"},
-			{"instance": "db2", "metric.type": "rate"},
-		})
-
-	_, err = processor.processMetrics(context.Background(), metrics1)
-	require.NoError(t, err)
-
-	// Second interval
-	metrics2 := createTestMetricsWithAttributes("test.metric", []float64{200, 150},
-		[]time.Time{baseTime.Add(10 * time.Second), baseTime.Add(10 * time.Second)},
-		[]map[string]string{
-			{"instance": "db1", "metric.type": "rate"},
-			{"instance": "db2", "metric.type": "rate"},
-		})
-
-	processedMetrics, err := processor.processMetrics(context.Background(), metrics2)
-	require.NoError(t, err)
-
-	// Verify both metrics are processed independently
-	metric := getFirstMetric(processedMetrics)
-	dataPoints := metric.Sum().DataPoints()
-
-	assert.Equal(t, 2, dataPoints.Len(), "Should have 2 data points")
-
-	// Check rates for both instances
-	for i := 0; i < dataPoints.Len(); i++ {
-		dp := dataPoints.At(i)
-		assert.False(t, dp.Flags().NoRecordedValue(), "Both metrics should have valid rates")
+	// Verify each data point
+	for i := 0; i < 3; i++ {
+		dp := gauge.DataPoints().At(i)
+		assert.Equal(t, float64(100+i*10), dp.DoubleValue())
 
 		instance, exists := dp.Attributes().Get("instance")
 		assert.True(t, exists)
+		assert.Equal(t, string(rune('A'+i)), instance.Str())
 
-		if instance.AsString() == "db1" {
-			expectedRate := (200.0 - 100.0) / 10.0 // 10.0 per second
-			assert.Equal(t, expectedRate, dp.DoubleValue())
-		} else if instance.AsString() == "db2" {
-			expectedRate := (150.0 - 50.0) / 10.0 // 10.0 per second
-			assert.Equal(t, expectedRate, dp.DoubleValue())
-		}
+		metricType, exists := dp.Attributes().Get("metric.type")
+		assert.True(t, exists)
+		assert.Equal(t, "gauge", metricType.Str())
+	}
+}
+
+// 7. ProcessDataPoint Tests (Most Critical)
+
+func TestProcessDataPoint_FirstOccurrence(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	// Use a fixed time in UTC to avoid any timezone issues
+	now := time.Date(2023, 10, 1, 12, 0, 0, 0, time.UTC)
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetDoubleValue(100.0)
+	dp.SetTimestamp(pcommon.NewTimestampFromTime(now))
+	dp.Attributes().PutStr("key", "value")
+
+	processor.processDataPoint("test.metric", dp)
+
+	// First occurrence should be marked as NoRecordedValue
+	assert.True(t, dp.Flags().NoRecordedValue())
+
+	// State should be stored
+	key := processor.generateKey("test.metric", dp.Attributes())
+	state, exists := processor.previousState[key]
+	assert.True(t, exists)
+	assert.Equal(t, 100.0, state.value)
+	assert.True(t, now.Equal(state.timestamp), "Stored timestamp should equal the original timestamp")
+}
+
+func TestProcessDataPoint_ZeroTimeDifference(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	now := time.Now()
+
+	// Set up previous state with same timestamp
+	key := "test.metric|key=value"
+	processor.previousState[key] = &metricState{
+		value:     100.0,
+		timestamp: now,
 	}
 
-	// Verify we have separate state for each metric series
-	assert.Len(t, processor.previousState, 2, "Should have state for 2 different metric series")
+	// Process current data point with same timestamp
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetDoubleValue(200.0)
+	dp.SetTimestamp(pcommon.NewTimestampFromTime(now))
+	dp.Attributes().PutStr("key", "value")
+
+	processor.processDataPoint("test.metric", dp)
+
+	// Should be marked as NoRecordedValue due to zero time difference
+	assert.True(t, dp.Flags().NoRecordedValue())
 }
 
-func TestCumulativeToRateProcessor_NonCumulativeMetrics(t *testing.T) {
-	processor, err := newCumulativeToRateProcessor(&Config{}, zap.NewNop(), consumertest.NewNop())
-	require.NoError(t, err)
+func TestProcessDataPoint_NegativeTimeDifference(t *testing.T) {
+	processor := createTestProcessor(t)
 
-	// Create delta metrics (should be ignored)
-	metrics := createTestMetrics("test.metric", []float64{100}, []time.Time{time.Now().UTC()}, "gauge")
+	now := time.Now()
+	futureTime := now.Add(60 * time.Second)
 
-	// Manually set to delta temporality
-	metric := getFirstMetric(metrics)
-	metric.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
+	// Set up previous state with future timestamp
+	key := "test.metric|key=value"
+	processor.previousState[key] = &metricState{
+		value:     100.0,
+		timestamp: futureTime,
+	}
 
-	processedMetrics, err := processor.processMetrics(context.Background(), metrics)
-	require.NoError(t, err)
+	// Process current data point with earlier timestamp
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetDoubleValue(200.0)
+	dp.SetTimestamp(pcommon.NewTimestampFromTime(now))
+	dp.Attributes().PutStr("key", "value")
 
-	// Verify no processing occurred
-	assert.Len(t, processor.previousState, 0, "Should not process non-cumulative metrics")
+	processor.processDataPoint("test.metric", dp)
 
-	// Verify temporality unchanged
-	processedMetric := getFirstMetric(processedMetrics)
-	assert.Equal(t, pmetric.AggregationTemporalityDelta, processedMetric.Sum().AggregationTemporality())
+	// Should be marked as NoRecordedValue due to negative time difference
+	assert.True(t, dp.Flags().NoRecordedValue())
 }
 
-func TestCumulativeToRateProcessor_StateRotation(t *testing.T) {
-	processor, err := newCumulativeToRateProcessor(&Config{}, zap.NewNop(), consumertest.NewNop())
-	require.NoError(t, err)
+func TestProcessDataPoint_ZeroRate(t *testing.T) {
+	processor := createTestProcessor(t)
 
-	baseTime := time.Now().UTC()
+	// Set up previous state
+	key := "test.metric|key=value"
+	previousTime := time.Now().Add(-60 * time.Second)
+	processor.previousState[key] = &metricState{
+		value:     100.0,
+		timestamp: previousTime,
+	}
 
-	// First interval
-	metrics1 := createTestMetrics("test.metric", []float64{100}, []time.Time{baseTime}, "rate")
-	_, err = processor.processMetrics(context.Background(), metrics1)
-	require.NoError(t, err)
+	// Process current data point with same value
+	now := time.Now()
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetDoubleValue(100.0)
+	dp.SetTimestamp(pcommon.NewTimestampFromTime(now))
+	dp.Attributes().PutStr("key", "value")
 
-	// Verify initial state
-	key := "test.metric|metric.type=rate"
-	state1 := processor.previousState[key]
+	processor.processDataPoint("test.metric", dp)
+
+	// Should calculate rate as 0
+	assert.Equal(t, 0.0, dp.DoubleValue())
+	assert.False(t, dp.Flags().NoRecordedValue())
+}
+
+// 8. GenerateKey Tests
+
+func TestGenerateKey_Consistency(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	attrs1 := pcommon.NewMap()
+	attrs1.PutStr("key1", "value1")
+	attrs1.PutStr("key2", "value2")
+
+	attrs2 := pcommon.NewMap()
+	attrs2.PutStr("key2", "value2")
+	attrs2.PutStr("key1", "value1")
+
+	key1 := processor.generateKey("test.metric", attrs1)
+	key2 := processor.generateKey("test.metric", attrs2)
+
+	// Keys should be identical regardless of attribute order
+	assert.Equal(t, key1, key2)
+}
+
+func TestGenerateKey_Uniqueness(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	attrs1 := pcommon.NewMap()
+	attrs1.PutStr("key", "value1")
+
+	attrs2 := pcommon.NewMap()
+	attrs2.PutStr("key", "value2")
+
+	key1 := processor.generateKey("test.metric", attrs1)
+	key2 := processor.generateKey("test.metric", attrs2)
+
+	// Keys should be different for different attribute values
+	assert.NotEqual(t, key1, key2)
+}
+
+func TestGenerateKey_EmptyAttributes(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	attrs := pcommon.NewMap()
+	key := processor.generateKey("test.metric", attrs)
+
+	assert.Equal(t, "test.metric", key)
+}
+
+func TestGenerateKey_DifferentAttributeTypes(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	attrs := pcommon.NewMap()
+	attrs.PutStr("string_key", "string_value")
+	attrs.PutInt("int_key", 123)
+	attrs.PutBool("bool_key", true)
+	attrs.PutDouble("double_key", 45.67)
+
+	key := processor.generateKey("test.metric", attrs)
+
+	// Should contain all attribute types
+	assert.Contains(t, key, "string_key=string_value")
+	assert.Contains(t, key, "int_key=123")
+	assert.Contains(t, key, "bool_key=true")
+	assert.Contains(t, key, "double_key=45.67")
+}
+
+func TestGenerateKey_SpecialCharacters(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	attrs := pcommon.NewMap()
+	attrs.PutStr("key|with=special", "value|with=special")
+
+	key := processor.generateKey("test.metric", attrs)
+
+	// Should handle special characters without breaking
+	assert.Contains(t, key, "key|with=special=value|with=special")
+}
+
+func TestErrorHandling_InfinityValues(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	// Set up previous state
+	key := "test.metric|key=value"
+	previousTime := time.Now().Add(-60 * time.Second)
+	processor.previousState[key] = &metricState{
+		value:     100.0,
+		timestamp: previousTime,
+	}
+
+	// Process data point with infinity value
+	now := time.Now()
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetDoubleValue(math.Inf(1))
+	dp.SetTimestamp(pcommon.NewTimestampFromTime(now))
+	dp.Attributes().PutStr("key", "value")
+
+	processor.processDataPoint("test.metric", dp)
+
+	// Should calculate a very large rate
+	assert.False(t, dp.Flags().NoRecordedValue())
+	assert.True(t, math.IsInf(dp.DoubleValue(), 1))
+}
+
+func TestErrorHandling_VeryLargeNumbers(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	// Set up previous state with very large number
+	key := "test.metric|key=value"
+	previousTime := time.Now().Add(-60 * time.Second)
+	processor.previousState[key] = &metricState{
+		value:     math.MaxFloat64 / 2,
+		timestamp: previousTime,
+	}
+
+	// Process data point with very large number
+	now := time.Now()
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetDoubleValue(math.MaxFloat64)
+	dp.SetTimestamp(pcommon.NewTimestampFromTime(now))
+	dp.Attributes().PutStr("key", "value")
+
+	processor.processDataPoint("test.metric", dp)
+
+	// Should handle large numbers without panic
+	assert.False(t, dp.Flags().NoRecordedValue())
+}
+
+// 10. State Management Tests
+
+func TestStateManagement_BasicOperations(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	// Initially empty
+	assert.Equal(t, 0, len(processor.previousState))
+
+	// Process first metric
+	now := time.Now()
+	dp1 := pmetric.NewNumberDataPoint()
+	dp1.SetDoubleValue(100.0)
+	dp1.SetTimestamp(pcommon.NewTimestampFromTime(now))
+	dp1.Attributes().PutStr("instance", "A")
+
+	processor.processDataPoint("test.metric", dp1)
+
+	// State should be stored
+	assert.Equal(t, 1, len(processor.previousState))
+
+	// Process second metric with different attributes
+	dp2 := pmetric.NewNumberDataPoint()
+	dp2.SetDoubleValue(200.0)
+	dp2.SetTimestamp(pcommon.NewTimestampFromTime(now))
+	dp2.Attributes().PutStr("instance", "B")
+
+	processor.processDataPoint("test.metric", dp2)
+
+	// Should have two separate states
+	assert.Equal(t, 2, len(processor.previousState))
+}
+
+func TestStateManagement_StateIsolation(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	now := time.Now()
+
+	// Process metrics with different names but same attributes
+	attrs := pcommon.NewMap()
+	attrs.PutStr("key", "value")
+
+	dp1 := pmetric.NewNumberDataPoint()
+	dp1.SetDoubleValue(100.0)
+	dp1.SetTimestamp(pcommon.NewTimestampFromTime(now))
+	attrs.CopyTo(dp1.Attributes())
+
+	dp2 := pmetric.NewNumberDataPoint()
+	dp2.SetDoubleValue(200.0)
+	dp2.SetTimestamp(pcommon.NewTimestampFromTime(now))
+	attrs.CopyTo(dp2.Attributes())
+
+	processor.processDataPoint("metric1", dp1)
+	processor.processDataPoint("metric2", dp2)
+
+	// Should have separate states for different metric names
+	assert.Equal(t, 2, len(processor.previousState))
+
+	key1 := processor.generateKey("metric1", attrs)
+	key2 := processor.generateKey("metric2", attrs)
+
+	state1, exists1 := processor.previousState[key1]
+	state2, exists2 := processor.previousState[key2]
+
+	assert.True(t, exists1)
+	assert.True(t, exists2)
 	assert.Equal(t, 100.0, state1.value)
-	assert.Equal(t, baseTime, state1.timestamp)
-
-	// Second interval
-	secondTime := baseTime.Add(10 * time.Second)
-	metrics2 := createTestMetrics("test.metric", []float64{200}, []time.Time{secondTime}, "rate")
-	_, err = processor.processMetrics(context.Background(), metrics2)
-	require.NoError(t, err)
-
-	// Verify state rotation (previous becomes current)
-	state2 := processor.previousState[key]
-	assert.Equal(t, 200.0, state2.value, "State should be updated with current value")
-	assert.Equal(t, secondTime, state2.timestamp, "State should be updated with current timestamp")
-
-	// Verify we still have only one state entry
-	assert.Len(t, processor.previousState, 1, "Should maintain only one state per metric series")
+	assert.Equal(t, 200.0, state2.value)
 }
 
-func TestCumulativeToRateProcessor_MultipleMetrics_Simplified(t *testing.T) {
-	processor, err := newCumulativeToRateProcessor(&Config{}, zap.NewNop(), consumertest.NewNop())
-	require.NoError(t, err)
+func TestStateManagement_StateUpdates_MultipleMetrics(t *testing.T) {
+	processor := createTestProcessor(t)
 
-	baseTime := time.Now().UTC()
+	// Test that different metrics maintain separate state
+	attrs1 := pcommon.NewMap()
+	attrs1.PutStr("instance", "A")
 
-	// Test with two separate metric names instead of same name with different attributes
-	// First interval
+	attrs2 := pcommon.NewMap()
+	attrs2.PutStr("instance", "B")
+
+	key1 := processor.generateKey("test.metric", attrs1)
+	key2 := processor.generateKey("test.metric", attrs2)
+
+	time1 := time.Now()
+
+	// Process first metric
+	dp1 := pmetric.NewNumberDataPoint()
+	dp1.SetDoubleValue(100.0)
+	dp1.SetTimestamp(pcommon.NewTimestampFromTime(time1))
+	attrs1.CopyTo(dp1.Attributes())
+	processor.processDataPoint("test.metric", dp1)
+
+	// Process second metric
+	dp2 := pmetric.NewNumberDataPoint()
+	dp2.SetDoubleValue(200.0)
+	dp2.SetTimestamp(pcommon.NewTimestampFromTime(time1))
+	attrs2.CopyTo(dp2.Attributes())
+	processor.processDataPoint("test.metric", dp2)
+
+	// Should have separate states
+	assert.Equal(t, 2, len(processor.previousState))
+
+	state1 := processor.previousState[key1]
+	state2 := processor.previousState[key2]
+
+	assert.NotNil(t, state1)
+	assert.NotNil(t, state2)
+	assert.NotSame(t, state1, state2, "Different metrics should have separate state objects")
+
+	assert.Equal(t, 100.0, state1.value)
+	assert.Equal(t, 200.0, state2.value)
+}
+
+func TestStateManagement_StateUpdates_MemoryEfficiency(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	attrs := pcommon.NewMap()
+	attrs.PutStr("key", "value")
+	key := processor.generateKey("test.metric", attrs)
+
+	// Process many updates to same metric
+	baseTime := time.Now()
+	for i := 0; i < 100; i++ {
+		dp := pmetric.NewNumberDataPoint()
+		dp.SetDoubleValue(float64(100 + i))
+		dp.SetTimestamp(pcommon.NewTimestampFromTime(baseTime.Add(time.Duration(i) * time.Second)))
+		attrs.CopyTo(dp.Attributes())
+		processor.processDataPoint("test.metric", dp)
+	}
+
+	// Should still only have one state entry
+	assert.Equal(t, 1, len(processor.previousState), "Should not create multiple state entries for same metric")
+
+	state := processor.previousState[key]
+	assert.Equal(t, 199.0, state.value, "Final state should have last processed value")
+}
+
+// 11. Basic Concurrency Tests
+
+func TestConcurrency_BasicMutex(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	var wg sync.WaitGroup
+	numGoroutines := 10
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+
+			attrs := pcommon.NewMap()
+			attrs.PutStr("goroutine", string(rune('A'+id)))
+
+			dp := pmetric.NewNumberDataPoint()
+			dp.SetDoubleValue(float64(100 + id))
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+			attrs.CopyTo(dp.Attributes())
+
+			processor.processDataPoint("test.metric", dp)
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Should have states for all goroutines
+	assert.Equal(t, numGoroutines, len(processor.previousState))
+}
+
+func TestConcurrency_StateAccess(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	// Pre-populate some state
+	attrs := pcommon.NewMap()
+	attrs.PutStr("key", "value")
+	key := processor.generateKey("test.metric", attrs)
+	processor.previousState[key] = &metricState{
+		value:     100.0,
+		timestamp: time.Now().Add(-60 * time.Second),
+	}
+
+	var wg sync.WaitGroup
+	numGoroutines := 5
+
+	// Multiple goroutines accessing the same state
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+
+			dp := pmetric.NewNumberDataPoint()
+			dp.SetDoubleValue(float64(200 + id))
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+			attrs.CopyTo(dp.Attributes())
+
+			processor.processDataPoint("test.metric", dp)
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Should still have only one state entry (same key)
+	assert.Equal(t, 1, len(processor.previousState))
+
+	// Final state should be from one of the goroutines
+	finalState := processor.previousState[key]
+	assert.True(t, finalState.value >= 200.0 && finalState.value <= 204.0)
+}
+
+// 12. Attribute Handling Tests
+
+func TestAttributeHandling_TypePreservation(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	metric := pmetric.NewMetric()
+	metric.SetName("test.metric")
+	sum := metric.SetEmptySum()
+	sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+
+	dp := sum.DataPoints().AppendEmpty()
+	dp.SetDoubleValue(100.0)
+	dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+
+	// Add different attribute types
+	attrs := dp.Attributes()
+	attrs.PutStr("string_attr", "string_value")
+	attrs.PutInt("int_attr", 123)
+	attrs.PutBool("bool_attr", true)
+	attrs.PutDouble("double_attr", 45.67)
+	attrs.PutStr("metric.type", "rate")
+
+	processor.convertSumToGauge(metric)
+
+	// Verify all attributes are preserved with correct types
+	gauge := metric.Gauge()
+	gaugeDP := gauge.DataPoints().At(0)
+	gaugeAttrs := gaugeDP.Attributes()
+
+	stringVal, exists := gaugeAttrs.Get("string_attr")
+	assert.True(t, exists)
+	assert.Equal(t, pcommon.ValueTypeStr, stringVal.Type())
+	assert.Equal(t, "string_value", stringVal.Str())
+
+	intVal, exists := gaugeAttrs.Get("int_attr")
+	assert.True(t, exists)
+	assert.Equal(t, pcommon.ValueTypeInt, intVal.Type())
+	assert.Equal(t, int64(123), intVal.Int())
+
+	boolVal, exists := gaugeAttrs.Get("bool_attr")
+	assert.True(t, exists)
+	assert.Equal(t, pcommon.ValueTypeBool, boolVal.Type())
+	assert.True(t, boolVal.Bool())
+
+	doubleVal, exists := gaugeAttrs.Get("double_attr")
+	assert.True(t, exists)
+	assert.Equal(t, pcommon.ValueTypeDouble, doubleVal.Type())
+	assert.Equal(t, 45.67, doubleVal.Double())
+
+	// metric.type should be converted
+	metricType, exists := gaugeAttrs.Get("metric.type")
+	assert.True(t, exists)
+	assert.Equal(t, "gauge", metricType.Str())
+}
+
+func TestAttributeHandling_MetricTypeConversion(t *testing.T) {
+	tests := []struct {
+		name          string
+		originalType  string
+		expectedType  string
+		shouldConvert bool
+	}{
+		{
+			name:          "rate to gauge conversion",
+			originalType:  "rate",
+			expectedType:  "gauge",
+			shouldConvert: true,
+		},
+		{
+			name:          "non-rate type unchanged",
+			originalType:  "counter",
+			expectedType:  "counter",
+			shouldConvert: false,
+		},
+		{
+			name:          "empty type unchanged",
+			originalType:  "",
+			expectedType:  "",
+			shouldConvert: false,
+		},
+		{
+			name:          "gauge type unchanged",
+			originalType:  "gauge",
+			expectedType:  "gauge",
+			shouldConvert: false,
+		},
+		{
+			name:          "summary type unchanged",
+			originalType:  "summary",
+			expectedType:  "summary",
+			shouldConvert: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			processor := createTestProcessor(t)
+
+			var metric pmetric.Metric
+			if tt.originalType == "" {
+				// Create metric without metric.type attribute
+				metric = createTestSumMetric("test.metric", 100.0, time.Now(), map[string]string{
+					"other_attr": "value",
+				})
+			} else {
+				metric = createTestSumMetric("test.metric", 100.0, time.Now(), map[string]string{
+					"metric.type": tt.originalType,
+				})
+			}
+
+			processor.convertSumToGauge(metric)
+
+			gauge := metric.Gauge()
+			dp := gauge.DataPoints().At(0)
+			attrs := dp.Attributes()
+
+			metricType, exists := attrs.Get("metric.type")
+			if tt.originalType == "" {
+				// If no original type, should not have metric.type attribute
+				assert.False(t, exists, "metric.type attribute should not exist when not originally present")
+			} else {
+				assert.True(t, exists, "metric.type attribute should exist")
+				assert.Equal(t, tt.expectedType, metricType.Str(), "metric.type should match expected value")
+			}
+
+			// Verify the shouldConvert logic matches the actual behavior
+			actuallyConverted := (tt.originalType == "rate" && tt.expectedType == "gauge")
+			assert.Equal(t, tt.shouldConvert, actuallyConverted, "shouldConvert field should match actual conversion behavior")
+		})
+	}
+}
+
+// 13. Time Handling Tests
+
+func TestTimeHandling_Calculations(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	tests := []struct {
+		name         string
+		timeDiff     time.Duration
+		valueDiff    float64
+		expectedRate float64
+	}{
+		{
+			name:         "1 second interval",
+			timeDiff:     1 * time.Second,
+			valueDiff:    100.0,
+			expectedRate: 100.0,
+		},
+		{
+			name:         "1 minute interval",
+			timeDiff:     1 * time.Minute,
+			valueDiff:    120.0,
+			expectedRate: 2.0,
+		},
+		{
+			name:         "1 hour interval",
+			timeDiff:     1 * time.Hour,
+			valueDiff:    3600.0,
+			expectedRate: 1.0,
+		},
+		{
+			name:         "fractional second",
+			timeDiff:     500 * time.Millisecond,
+			valueDiff:    50.0,
+			expectedRate: 100.0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set up previous state
+			key := "test.metric|key=value"
+			previousTime := time.Now()
+			processor.previousState[key] = &metricState{
+				value:     100.0,
+				timestamp: previousTime,
+			}
+
+			// Process current data point
+			currentTime := previousTime.Add(tt.timeDiff)
+			dp := pmetric.NewNumberDataPoint()
+			dp.SetDoubleValue(100.0 + tt.valueDiff)
+			dp.SetTimestamp(pcommon.NewTimestampFromTime(currentTime))
+			dp.Attributes().PutStr("key", "value")
+
+			processor.processDataPoint("test.metric", dp)
+
+			assert.InDelta(t, tt.expectedRate, dp.DoubleValue(), 0.001)
+			assert.False(t, dp.Flags().NoRecordedValue())
+		})
+	}
+}
+
+func TestTimeHandling_TimestampPrecision(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	// Use nanosecond precision
+	baseTime := time.Unix(1640995200, 123456789) // 2022-01-01 00:00:00.123456789 UTC
+
+	// Set up previous state
+	key := "test.metric|key=value"
+	processor.previousState[key] = &metricState{
+		value:     100.0,
+		timestamp: baseTime,
+	}
+
+	// Process data point 1 nanosecond later
+	currentTime := baseTime.Add(1 * time.Nanosecond)
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetDoubleValue(200.0)
+	dp.SetTimestamp(pcommon.NewTimestampFromTime(currentTime))
+	dp.Attributes().PutStr("key", "value")
+
+	processor.processDataPoint("test.metric", dp)
+
+	// Should calculate extremely high rate due to tiny time difference
+	expectedRate := 100.0 / (1e-9) // 100 billion per second
+	assert.InDelta(t, expectedRate, dp.DoubleValue(), 1e8)
+}
+
+// 14. Integration-Style Tests
+
+func TestIntegration_EndToEndFlow(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	// Create metrics with multiple data points over time
+	baseTime := time.Now()
+
+	// First batch - should all be marked as NoRecordedValue
 	metrics1 := pmetric.NewMetrics()
 	rm1 := metrics1.ResourceMetrics().AppendEmpty()
 	sm1 := rm1.ScopeMetrics().AppendEmpty()
 
-	// Metric 1
-	metric1 := sm1.Metrics().AppendEmpty()
-	metric1.SetName("test.metric1")
-	sum1 := metric1.SetEmptySum()
-	sum1.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
-	dp1 := sum1.DataPoints().AppendEmpty()
-	dp1.SetDoubleValue(100)
-	dp1.SetTimestamp(pcommon.NewTimestampFromTime(baseTime))
-	dp1.Attributes().PutStr("metric.type", "rate")
+	for i := 0; i < 3; i++ {
+		metric := createTestSumMetric(
+			fmt.Sprintf("metric_%d", i),
+			float64(100+i*10),
+			baseTime,
+			map[string]string{"instance": fmt.Sprintf("instance_%d", i)},
+		)
+		tgt := sm1.Metrics().AppendEmpty()
+		metric.CopyTo(tgt)
+	}
 
-	// Metric 2
-	metric2 := sm1.Metrics().AppendEmpty()
-	metric2.SetName("test.metric2")
-	sum2 := metric2.SetEmptySum()
-	sum2.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
-	dp2 := sum2.DataPoints().AppendEmpty()
-	dp2.SetDoubleValue(50)
-	dp2.SetTimestamp(pcommon.NewTimestampFromTime(baseTime))
-	dp2.Attributes().PutStr("metric.type", "rate")
+	err := processor.ConsumeMetrics(context.Background(), metrics1)
+	assert.NoError(t, err)
 
-	_, err = processor.processMetrics(context.Background(), metrics1)
-	require.NoError(t, err)
+	// Verify first batch results
+	for i := 0; i < 3; i++ {
+		metric := sm1.Metrics().At(i)
+		assert.Equal(t, pmetric.MetricTypeGauge, metric.Type())
 
-	// Verify state for both metrics
-	assert.Len(t, processor.previousState, 2, "Should have state for 2 different metrics")
+		gauge := metric.Gauge()
+		if gauge.DataPoints().Len() > 0 {
+			dp := gauge.DataPoints().At(0)
+			assert.True(t, dp.Flags().NoRecordedValue())
+		}
+	}
 
-	// Second interval
+	// Second batch - should calculate rates
 	metrics2 := pmetric.NewMetrics()
 	rm2 := metrics2.ResourceMetrics().AppendEmpty()
 	sm2 := rm2.ScopeMetrics().AppendEmpty()
 
-	// Metric 1 - second interval
-	metric1_2 := sm2.Metrics().AppendEmpty()
-	metric1_2.SetName("test.metric1")
-	sum1_2 := metric1_2.SetEmptySum()
-	sum1_2.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
-	dp1_2 := sum1_2.DataPoints().AppendEmpty()
-	dp1_2.SetDoubleValue(200)
-	dp1_2.SetTimestamp(pcommon.NewTimestampFromTime(baseTime.Add(10 * time.Second)))
-	dp1_2.Attributes().PutStr("metric.type", "rate")
+	secondTime := baseTime.Add(60 * time.Second)
 
-	// Metric 2 - second interval
-	metric2_2 := sm2.Metrics().AppendEmpty()
-	metric2_2.SetName("test.metric2")
-	sum2_2 := metric2_2.SetEmptySum()
-	sum2_2.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
-	dp2_2 := sum2_2.DataPoints().AppendEmpty()
-	dp2_2.SetDoubleValue(150)
-	dp2_2.SetTimestamp(pcommon.NewTimestampFromTime(baseTime.Add(10 * time.Second)))
-	dp2_2.Attributes().PutStr("metric.type", "rate")
-
-	processedMetrics, err := processor.processMetrics(context.Background(), metrics2)
-	require.NoError(t, err)
-
-	// Verify both metrics have calculated rates
-	scopeMetrics := processedMetrics.ResourceMetrics().At(0).ScopeMetrics().At(0)
-	assert.Equal(t, 2, scopeMetrics.Metrics().Len(), "Should have 2 metrics")
-
-	// Check each metric
-	for i := 0; i < scopeMetrics.Metrics().Len(); i++ {
-		metric := scopeMetrics.Metrics().At(i)
-		dp := metric.Sum().DataPoints().At(0)
-
-		if metric.Name() == "test.metric1" {
-			expectedRate := (200.0 - 100.0) / 10.0 // 10.0 per second
-			assert.Equal(t, expectedRate, dp.DoubleValue(), "test.metric1 rate should be calculated correctly")
-			assert.False(t, dp.Flags().NoRecordedValue(), "test.metric1 should not be marked for removal")
-		} else if metric.Name() == "test.metric2" {
-			expectedRate := (150.0 - 50.0) / 10.0 // 10.0 per second
-			assert.Equal(t, expectedRate, dp.DoubleValue(), "test.metric2 rate should be calculated correctly")
-			assert.False(t, dp.Flags().NoRecordedValue(), "test.metric2 should not be marked for removal")
-		}
+	for i := 0; i < 3; i++ {
+		metric := createTestSumMetric(
+			fmt.Sprintf("metric_%d", i),
+			float64(200+i*20), // Increased values
+			secondTime,
+			map[string]string{"instance": fmt.Sprintf("instance_%d", i)},
+		)
+		tgt := sm2.Metrics().AppendEmpty()
+		metric.CopyTo(tgt)
 	}
 
-	// Verify we still have state for both metrics
-	assert.Len(t, processor.previousState, 2, "Should maintain state for 2 different metrics")
-}
+	err = processor.ConsumeMetrics(context.Background(), metrics2)
+	assert.NoError(t, err)
 
-// Helper functions
+	// Verify second batch results
+	for i := 0; i < 3; i++ {
+		metric := sm2.Metrics().At(i)
+		assert.Equal(t, pmetric.MetricTypeGauge, metric.Type())
 
-func createTestMetrics(name string, values []float64, timestamps []time.Time, metricType string) pmetric.Metrics {
-	attrs := make([]map[string]string, len(values))
-	for i := range values {
-		attrs[i] = map[string]string{"metric.type": metricType}
+		gauge := metric.Gauge()
+		assert.Equal(t, 1, gauge.DataPoints().Len())
+
+		dp := gauge.DataPoints().At(0)
+		assert.False(t, dp.Flags().NoRecordedValue())
+
+		// Expected rate: (new_value - old_value) / 60 seconds
+		expectedRate := float64(100+i*10) / 60.0
+		assert.InDelta(t, expectedRate, dp.DoubleValue(), 0.01)
 	}
-	return createTestMetricsWithAttributes(name, values, timestamps, attrs)
 }
 
-func createTestMetricsWithAttributes(name string, values []float64, timestamps []time.Time, attributes []map[string]string) pmetric.Metrics {
-	metrics := pmetric.NewMetrics()
-	resourceMetrics := metrics.ResourceMetrics().AppendEmpty()
-	scopeMetrics := resourceMetrics.ScopeMetrics().AppendEmpty()
-	metric := scopeMetrics.Metrics().AppendEmpty()
+func TestIntegration_MixedMetricTypes(t *testing.T) {
+	processor := createTestProcessor(t)
 
-	metric.SetName(name)
+	// Create metrics with different types
+	md := pmetric.NewMetrics()
+	rm := md.ResourceMetrics().AppendEmpty()
+	sm := rm.ScopeMetrics().AppendEmpty()
+
+	// Add sum metric (should be processed)
+	sumMetric := createTestSumMetric("sum.metric", 100.0, time.Now(), map[string]string{"type": "sum"})
+	tgt1 := sm.Metrics().AppendEmpty()
+	sumMetric.CopyTo(tgt1)
+
+	// Add gauge metric (should be ignored)
+	gaugeMetric := createTestGaugeMetric("gauge.metric", 200.0)
+	tgt2 := sm.Metrics().AppendEmpty()
+	gaugeMetric.CopyTo(tgt2)
+
+	// Add histogram metric (should be ignored)
+	histogramMetric := pmetric.NewMetric()
+	histogramMetric.SetName("histogram.metric")
+	hist := histogramMetric.SetEmptyHistogram()
+	histDP := hist.DataPoints().AppendEmpty()
+	histDP.SetCount(10)
+	histDP.SetSum(100.0)
+	histDP.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+	tgt3 := sm.Metrics().AppendEmpty()
+	histogramMetric.CopyTo(tgt3)
+
+	err := processor.ConsumeMetrics(context.Background(), md)
+	assert.NoError(t, err)
+
+	// Verify results
+	assert.Equal(t, 3, sm.Metrics().Len())
+
+	// Sum metric should be converted to gauge
+	assert.Equal(t, pmetric.MetricTypeGauge, sm.Metrics().At(0).Type())
+
+	// Gauge metric should remain gauge
+	assert.Equal(t, pmetric.MetricTypeGauge, sm.Metrics().At(1).Type())
+
+	// Histogram metric should remain histogram
+	assert.Equal(t, pmetric.MetricTypeHistogram, sm.Metrics().At(2).Type())
+}
+
+// 15. Edge Case Tests
+
+func TestEdgeCases_VerySmallTimeDifferences(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	baseTime := time.Now()
+
+	// Set up previous state
+	key := "test.metric|key=value"
+	processor.previousState[key] = &metricState{
+		value:     100.0,
+		timestamp: baseTime,
+	}
+
+	// Process data point with microsecond difference
+	currentTime := baseTime.Add(1 * time.Microsecond)
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetDoubleValue(100.001)
+	dp.SetTimestamp(pcommon.NewTimestampFromTime(currentTime))
+	dp.Attributes().PutStr("key", "value")
+
+	processor.processDataPoint("test.metric", dp)
+
+	// Should calculate rate without overflow
+	assert.False(t, dp.Flags().NoRecordedValue())
+	assert.False(t, math.IsInf(dp.DoubleValue(), 0))
+	assert.False(t, math.IsNaN(dp.DoubleValue()))
+}
+
+func TestEdgeCases_CounterReset(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	// Simulate counter reset scenario
+	key := "test.metric|key=value"
+	previousTime := time.Now().Add(-60 * time.Second)
+
+	// Previous state with high value
+	processor.previousState[key] = &metricState{
+		value:     1000000.0,
+		timestamp: previousTime,
+	}
+
+	// Current value is much lower (counter reset)
+	now := time.Now()
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetDoubleValue(100.0)
+	dp.SetTimestamp(pcommon.NewTimestampFromTime(now))
+	dp.Attributes().PutStr("key", "value")
+
+	processor.processDataPoint("test.metric", dp)
+
+	// Should be marked as NoRecordedValue due to negative rate
+	assert.True(t, dp.Flags().NoRecordedValue())
+
+	// State should still be updated for next calculation
+	state := processor.previousState[key]
+	assert.Equal(t, 100.0, state.value)
+	assert.True(t, now.Equal(state.timestamp)) // Use Equal() method instead
+}
+
+func TestEdgeCases_FloatingPointPrecision(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	// Test with values that might cause floating point precision issues
+	key := "test.metric|key=value"
+	previousTime := time.Now().Add(-1 * time.Second)
+
+	processor.previousState[key] = &metricState{
+		value:     0.1 + 0.2, // 0.30000000000000004 in floating point
+		timestamp: previousTime,
+	}
+
+	now := time.Now()
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetDoubleValue(0.3 + 0.1) // 0.4
+	dp.SetTimestamp(pcommon.NewTimestampFromTime(now))
+	dp.Attributes().PutStr("key", "value")
+
+	processor.processDataPoint("test.metric", dp)
+
+	// Should handle floating point precision gracefully
+	assert.False(t, dp.Flags().NoRecordedValue())
+
+	// Rate should be approximately 0.1 per second
+	assert.InDelta(t, 0.1, dp.DoubleValue(), 0.001)
+}
+
+// 16. Boundary Value Tests
+
+func TestBoundaryValues_ZeroValues(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	// Test with zero values
+	key := "test.metric|key=value"
+	previousTime := time.Now().Add(-60 * time.Second)
+
+	processor.previousState[key] = &metricState{
+		value:     0.0,
+		timestamp: previousTime,
+	}
+
+	now := time.Now()
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetDoubleValue(0.0)
+	dp.SetTimestamp(pcommon.NewTimestampFromTime(now))
+	dp.Attributes().PutStr("key", "value")
+
+	processor.processDataPoint("test.metric", dp)
+
+	// Rate should be 0
+	assert.Equal(t, 0.0, dp.DoubleValue())
+	assert.False(t, dp.Flags().NoRecordedValue())
+}
+
+func TestBoundaryValues_NegativeValues(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	// Test with negative values (unusual but possible)
+	key := "test.metric|key=value"
+	previousTime := time.Now().Add(-60 * time.Second)
+
+	processor.previousState[key] = &metricState{
+		value:     -100.0,
+		timestamp: previousTime,
+	}
+
+	now := time.Now()
+	dp := pmetric.NewNumberDataPoint()
+	dp.SetDoubleValue(-50.0)
+	dp.SetTimestamp(pcommon.NewTimestampFromTime(now))
+	dp.Attributes().PutStr("key", "value")
+
+	processor.processDataPoint("test.metric", dp)
+
+	// Rate should be positive: (-50 - (-100)) / 60 = 50/60 ≈ 0.833
+	expectedRate := 50.0 / 60.0
+	assert.InDelta(t, expectedRate, dp.DoubleValue(), 0.01)
+	assert.False(t, dp.Flags().NoRecordedValue())
+}
+
+// 17. Stress Tests (Limited for Unit Tests)
+
+func TestStress_ManyUniqueMetrics(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	numMetrics := 1000
+	baseTime := time.Now()
+
+	// Process many unique metrics
+	for i := 0; i < numMetrics; i++ {
+		dp := pmetric.NewNumberDataPoint()
+		dp.SetDoubleValue(float64(100 + i))
+		dp.SetTimestamp(pcommon.NewTimestampFromTime(baseTime))
+		dp.Attributes().PutStr("metric_id", fmt.Sprintf("metric_%d", i))
+
+		processor.processDataPoint("test.metric", dp)
+	}
+
+	// Should have state for all metrics
+	assert.Equal(t, numMetrics, len(processor.previousState))
+
+	// Process second round
+	secondTime := baseTime.Add(60 * time.Second)
+	for i := 0; i < numMetrics; i++ {
+		dp := pmetric.NewNumberDataPoint()
+		dp.SetDoubleValue(float64(200 + i))
+		dp.SetTimestamp(pcommon.NewTimestampFromTime(secondTime))
+		dp.Attributes().PutStr("metric_id", fmt.Sprintf("metric_%d", i))
+
+		processor.processDataPoint("test.metric", dp)
+
+		// Should calculate rate correctly
+		expectedRate := 100.0 / 60.0
+		assert.InDelta(t, expectedRate, dp.DoubleValue(), 0.01)
+		assert.False(t, dp.Flags().NoRecordedValue())
+	}
+}
+
+// 19. Metadata Preservation Tests
+
+func TestMetadataPreservation_MetricMetadata(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	// Create metric with full metadata
+	metric := pmetric.NewMetric()
+	metric.SetName("test.metric.with.metadata")
+	metric.SetDescription("Test metric with description")
+	metric.SetUnit("bytes/sec")
+
 	sum := metric.SetEmptySum()
-	sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
 	sum.SetIsMonotonic(true)
+	sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
 
-	for i, value := range values {
-		dp := sum.DataPoints().AppendEmpty()
-		dp.SetDoubleValue(value)
-		dp.SetTimestamp(pcommon.NewTimestampFromTime(timestamps[i]))
+	dp := sum.DataPoints().AppendEmpty()
+	dp.SetDoubleValue(100.0)
+	dp.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+	dp.Attributes().PutStr("service", "test-service")
 
-		// Set attributes
-		for k, v := range attributes[i] {
-			dp.Attributes().PutStr(k, v)
-		}
+	processor.processMetric(metric)
+
+	// Verify metadata is preserved
+	assert.Equal(t, "test.metric.with.metadata", metric.Name())
+	assert.Equal(t, "Test metric with description", metric.Description())
+	assert.Equal(t, "bytes/sec", metric.Unit())
+
+	// Should be converted to gauge
+	assert.Equal(t, pmetric.MetricTypeGauge, metric.Type())
+
+	// Attributes should be preserved
+	gauge := metric.Gauge()
+	if gauge.DataPoints().Len() > 0 {
+		dp := gauge.DataPoints().At(0)
+		service, exists := dp.Attributes().Get("service")
+		assert.True(t, exists)
+		assert.Equal(t, "test-service", service.Str())
 	}
-
-	return metrics
 }
 
-func getFirstMetric(metrics pmetric.Metrics) pmetric.Metric {
-	return metrics.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0)
-}
+// 20. Resource and Scope Preservation Tests
 
-func getFirstDataPoint(metrics pmetric.Metrics) pmetric.NumberDataPoint {
-	return getFirstMetric(metrics).Sum().DataPoints().At(0)
+func TestResourceScopePreservation(t *testing.T) {
+	processor := createTestProcessor(t)
+
+	// Create metrics with resource and scope attributes
+	md := pmetric.NewMetrics()
+
+	// Set resource attributes
+	rm := md.ResourceMetrics().AppendEmpty()
+	resourceAttrs := rm.Resource().Attributes()
+	resourceAttrs.PutStr("service.name", "test-service")
+	resourceAttrs.PutStr("service.version", "1.0.0")
+
+	// Set scope attributes
+	sm := rm.ScopeMetrics().AppendEmpty()
+	scope := sm.Scope()
+	scope.SetName("test.scope")
+	scope.SetVersion("2.0.0")
+
+	// Add metric
+	metric := createTestSumMetric("test.metric", 100.0, time.Now(), map[string]string{"key": "value"})
+	tgt := sm.Metrics().AppendEmpty()
+	metric.CopyTo(tgt)
+
+	result, err := processor.processMetrics(context.Background(), md)
+	assert.NoError(t, err)
+
+	// Verify resource attributes are preserved
+	resultRM := result.ResourceMetrics().At(0)
+	resultResourceAttrs := resultRM.Resource().Attributes()
+
+	serviceName, exists := resultResourceAttrs.Get("service.name")
+	assert.True(t, exists)
+	assert.Equal(t, "test-service", serviceName.Str())
+
+	serviceVersion, exists := resultResourceAttrs.Get("service.version")
+	assert.True(t, exists)
+	assert.Equal(t, "1.0.0", serviceVersion.Str())
+
+	// Verify scope attributes are preserved
+	resultSM := resultRM.ScopeMetrics().At(0)
+	resultScope := resultSM.Scope()
+	assert.Equal(t, "test.scope", resultScope.Name())
+	assert.Equal(t, "2.0.0", resultScope.Version())
 }

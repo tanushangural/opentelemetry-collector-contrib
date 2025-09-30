@@ -21,30 +21,44 @@ import (
 type metricState struct {
 	value     float64
 	timestamp time.Time
+	lastSeen  time.Time
 }
 
 type cumulativeToRateProcessor struct {
+	config        *Config
 	logger        *zap.Logger
 	previousState map[string]*metricState
 	mutex         sync.RWMutex
 	nextConsumer  consumer.Metrics
+	stopCh        chan struct{}
+	wg            sync.WaitGroup
 }
 
 func newCumulativeToRateProcessor(config *Config, logger *zap.Logger, nextConsumer consumer.Metrics) (*cumulativeToRateProcessor, error) {
 	return &cumulativeToRateProcessor{
+		config:        config,
 		logger:        logger,
 		previousState: make(map[string]*metricState),
 		nextConsumer:  nextConsumer,
+		stopCh:        make(chan struct{}),
 	}, nil
 }
 
 // Start implements processor.Metrics
 func (ctrp *cumulativeToRateProcessor) Start(ctx context.Context, host component.Host) error {
+	// Start the cleanup goroutine
+	ctrp.wg.Add(1)
+	go ctrp.cleanupExpiredStates()
+	ctrp.logger.Info("Started cumulative to rate processor with TTL cleanup",
+		zap.Duration("state_ttl", ctrp.config.StateTTL))
 	return nil
 }
 
 // Shutdown implements processor.Metrics
 func (ctrp *cumulativeToRateProcessor) Shutdown(ctx context.Context) error {
+	close(ctrp.stopCh)
+	ctrp.wg.Wait()
+	ctrp.logger.Info("Shutdown cumulative to rate processor")
 	return nil
 }
 
@@ -158,9 +172,13 @@ func (ctrp *cumulativeToRateProcessor) processDataPoint(metricName string, dp pm
 
 	currentValue := dp.DoubleValue()
 	currentTime := dp.Timestamp().AsTime()
+	now := time.Now()
 
 	// Check if we have previous state for this metric
 	if prevState, exists := ctrp.previousState[key]; exists {
+		// Update last seen time
+		prevState.lastSeen = now
+
 		// Calculate rate: (Current Value - Previous Value) / (Current Time - Previous Time)
 		timeDiff := currentTime.Sub(prevState.timestamp).Seconds()
 		if timeDiff > 0 {
@@ -201,6 +219,52 @@ func (ctrp *cumulativeToRateProcessor) processDataPoint(metricName string, dp pm
 	ctrp.previousState[key] = &metricState{
 		value:     currentValue,
 		timestamp: currentTime,
+		lastSeen:  now,
+	}
+}
+
+func (ctrp *cumulativeToRateProcessor) cleanupExpiredStates() {
+	defer ctrp.wg.Done()
+
+	// Run cleanup every 15 minutes or 1/4 of TTL, whichever is smaller
+	cleanupInterval := ctrp.config.StateTTL / 4
+	if cleanupInterval > 15*time.Minute {
+		cleanupInterval = 15 * time.Minute
+	}
+
+	ticker := time.NewTicker(cleanupInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			ctrp.evictExpiredStates()
+		case <-ctrp.stopCh:
+			return
+		}
+	}
+}
+
+func (ctrp *cumulativeToRateProcessor) evictExpiredStates() {
+	ctrp.mutex.Lock()
+	defer ctrp.mutex.Unlock()
+
+	now := time.Now()
+	expiredKeys := make([]string, 0)
+
+	for key, state := range ctrp.previousState {
+		if now.Sub(state.lastSeen) > ctrp.config.StateTTL {
+			expiredKeys = append(expiredKeys, key)
+		}
+	}
+
+	if len(expiredKeys) > 0 {
+		for _, key := range expiredKeys {
+			delete(ctrp.previousState, key)
+		}
+		ctrp.logger.Debug("Evicted expired metric states",
+			zap.Int("evicted_count", len(expiredKeys)),
+			zap.Int("remaining_count", len(ctrp.previousState)))
 	}
 }
 

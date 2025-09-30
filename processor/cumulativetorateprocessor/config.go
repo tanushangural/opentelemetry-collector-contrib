@@ -4,15 +4,24 @@
 package cumulativetorateprocessor
 
 import (
-	"go.opentelemetry.io/collector/component"
+    "time"
+
+    "go.opentelemetry.io/collector/component"
 )
 
-// Config defines configuration for the cumulative to rate processor.
-type Config struct{}
+// Config represents the receiver config settings within the collector's config.yaml
+type Config struct {
+    // StateTTL defines how long to keep metric state before evicting it
+    // Default is 1 hour
+    StateTTL time.Duration `mapstructure:"state_ttl"`
+}
 
 var _ component.Config = (*Config)(nil)
 
-// Validate checks if the processor configuration is valid
+// Validate checks the receiver configuration is valid
 func (cfg *Config) Validate() error {
-	return nil
+    if cfg.StateTTL <= 0 {
+        cfg.StateTTL = time.Hour // Default to 1 hour
+    }
+    return nil
 }

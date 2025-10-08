@@ -117,6 +117,7 @@ processors:
   - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.135.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.135.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/cumulativetodeltaprocessor v0.135.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/cumulativetorateprocessor v0.135.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/coralogixprocessor v0.135.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.135.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatorateprocessor v0.135.0
@@ -246,6 +247,7 @@ receivers:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/windowseventlogreceiver v0.135.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/zipkinreceiver v0.135.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/zookeeperreceiver v0.135.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/newrelicsqlserverreceiver v0.109.0
 
 connectors:
   - gomod: go.opentelemetry.io/collector/connector/forwardconnector v0.135.0
@@ -276,3 +278,4 @@ providers:
 # file before passing it to OCB, to ensure that local versions are used for all
 # Contrib modules.
 replaces:
+  - github.com/open-telemetry/opentelemetry-collector-contrib/processor/cumulativetorateprocessor => ../../processor/cumulativetorateprocessor

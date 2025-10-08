@@ -6,11 +6,11 @@ package cumulativetorateprocessor
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -18,30 +18,53 @@ import (
 	"go.uber.org/zap"
 )
 
-type metricState struct {
-	value     float64
-	timestamp time.Time
-	lastSeen  time.Time
+type metricSeriesState struct {
+	lastValue     float64
+	lastTimestamp time.Time
+	lastSeen      time.Time // Add this field for TTL tracking
 }
 
 type cumulativeToRateProcessor struct {
-	config        *Config
-	logger        *zap.Logger
-	previousState map[string]*metricState
-	mutex         sync.RWMutex
-	nextConsumer  consumer.Metrics
-	stopCh        chan struct{}
-	wg            sync.WaitGroup
+	config       *Config
+	logger       *zap.Logger
+	nextConsumer consumer.Metrics
+	stopCh       chan struct{}
+	wg           sync.WaitGroup
+
+	// State management
+	stateMutex  sync.RWMutex
+	metricState map[string]*metricSeriesState
+
+	// Filtering
+	includeSet map[string]bool
+	excludeSet map[string]bool
 }
 
 func newCumulativeToRateProcessor(config *Config, logger *zap.Logger, nextConsumer consumer.Metrics) (*cumulativeToRateProcessor, error) {
-	return &cumulativeToRateProcessor{
-		config:        config,
-		logger:        logger,
-		previousState: make(map[string]*metricState),
-		nextConsumer:  nextConsumer,
-		stopCh:        make(chan struct{}),
-	}, nil
+	processor := &cumulativeToRateProcessor{
+		config:       config,
+		logger:       logger,
+		nextConsumer: nextConsumer,
+		stopCh:       make(chan struct{}),
+		metricState:  make(map[string]*metricSeriesState),
+	}
+
+	// Pre-build sets for efficient lookup
+	if len(config.Include) > 0 {
+		processor.includeSet = make(map[string]bool)
+		for _, metric := range config.Include {
+			processor.includeSet[metric] = true
+		}
+	}
+
+	if len(config.Exclude) > 0 {
+		processor.excludeSet = make(map[string]bool)
+		for _, metric := range config.Exclude {
+			processor.excludeSet[metric] = true
+		}
+	}
+
+	return processor, nil
 }
 
 // Start implements processor.Metrics
@@ -78,149 +101,268 @@ func (ctrp *cumulativeToRateProcessor) ConsumeMetrics(ctx context.Context, md pm
 
 // processMetrics implements the ProcessMetricsFunc type.
 func (ctrp *cumulativeToRateProcessor) processMetrics(ctx context.Context, md pmetric.Metrics) (pmetric.Metrics, error) {
-	ctrp.mutex.Lock()
-	defer ctrp.mutex.Unlock()
-
 	resourceMetrics := md.ResourceMetrics()
+
 	for i := 0; i < resourceMetrics.Len(); i++ {
-		rm := resourceMetrics.At(i)
-		scopeMetrics := rm.ScopeMetrics()
+		resourceMetric := resourceMetrics.At(i)
+		scopeMetrics := resourceMetric.ScopeMetrics()
 
 		for j := 0; j < scopeMetrics.Len(); j++ {
-			sm := scopeMetrics.At(j)
-			metrics := sm.Metrics()
+			scopeMetric := scopeMetrics.At(j)
+			metrics := scopeMetric.Metrics()
 
 			for k := 0; k < metrics.Len(); k++ {
 				metric := metrics.At(k)
-				ctrp.processMetric(metric)
+				metricName := metric.Name()
+
+				// Check if this metric should be processed
+				if !ctrp.shouldProcessMetric(metricName) {
+					ctrp.logger.Debug("Skipping metric due to include/exclude rules",
+						zap.String("metric_name", metricName))
+					continue
+				}
+
+				// Process only Sum metrics
+				switch metric.Type() {
+				case pmetric.MetricTypeSum:
+					sum := metric.Sum()
+					// Only process if it's cumulative AND monotonic
+					if sum.AggregationTemporality() == pmetric.AggregationTemporalityCumulative && sum.IsMonotonic() {
+						ctrp.logger.Debug("Processing cumulative monotonic sum metric",
+							zap.String("metric_name", metricName))
+						ctrp.processCumulativeSum(metric)
+					} else {
+						ctrp.logger.Debug("Skipping sum metric - not cumulative or not monotonic",
+							zap.String("metric_name", metricName),
+							zap.String("aggregation_temporality", sum.AggregationTemporality().String()),
+							zap.Bool("is_monotonic", sum.IsMonotonic()))
+					}
+				default:
+					// Skip all other metric types (Gauge, Histogram, Summary, etc.)
+					ctrp.logger.Debug("Skipping metric - only processing Sum metrics",
+						zap.String("metric_name", metricName),
+						zap.String("metric_type", metric.Type().String()))
+				}
 			}
 		}
 	}
 
+	// Clean up old state entries
+	ctrp.cleanupOldState()
+
 	return md, nil
 }
 
-func (ctrp *cumulativeToRateProcessor) processMetric(metric pmetric.Metric) {
-	// Only process Sum metrics that are cumulative (rate source type)
-	if metric.Type() != pmetric.MetricTypeSum {
-		return
-	}
-
+func (ctrp *cumulativeToRateProcessor) processCumulativeSum(metric pmetric.Metric) {
 	sum := metric.Sum()
-
-	// Only process cumulative metrics (which represent rate source type)
-	if sum.AggregationTemporality() != pmetric.AggregationTemporalityCumulative {
-		return
-	}
-
 	dataPoints := sum.DataPoints()
 
-	// Process each data point to calculate rates
+	// Process data points and collect indices of points to remove
+	var indicesToRemove []int
 	for i := 0; i < dataPoints.Len(); i++ {
-		dp := dataPoints.At(i)
-		ctrp.processDataPoint(metric.Name(), dp)
+		dataPoint := dataPoints.At(i)
+		if !ctrp.processDataPoint(metric.Name(), dataPoint) {
+			indicesToRemove = append(indicesToRemove, i)
+		}
 	}
 
-	// Convert Sum metric to Gauge metric with summary statistics
+	// Remove data points in reverse order to maintain correct indices
+	for i := len(indicesToRemove) - 1; i >= 0; i-- {
+		dataPoints.RemoveIf(func(dp pmetric.NumberDataPoint) bool {
+			// Compare by finding the data point at the specific index
+			for j := 0; j < dataPoints.Len(); j++ {
+				if dataPoints.At(j) == dp && j == indicesToRemove[i] {
+					return true
+				}
+			}
+			return false
+		})
+	}
+
+	// Convert Sum to Gauge
 	ctrp.convertSumToGauge(metric)
 }
 
+// convertSumToGauge converts a Sum metric to a Gauge metric
 func (ctrp *cumulativeToRateProcessor) convertSumToGauge(metric pmetric.Metric) {
-	// Get the current sum data points
 	sum := metric.Sum()
 	sumDataPoints := sum.DataPoints()
 
-	// Convert to gauge
+	// Create new gauge
 	gauge := metric.SetEmptyGauge()
 	gaugeDataPoints := gauge.DataPoints()
 
 	// Copy data points from sum to gauge
 	for i := 0; i < sumDataPoints.Len(); i++ {
 		sumDP := sumDataPoints.At(i)
-
-		// Skip data points marked as invalid
-		if sumDP.Flags().NoRecordedValue() {
-			continue
-		}
-
 		gaugeDP := gaugeDataPoints.AppendEmpty()
 
-		// Copy basic properties
+		// Copy all properties
 		gaugeDP.SetTimestamp(sumDP.Timestamp())
 		gaugeDP.SetStartTimestamp(sumDP.StartTimestamp())
-
-		// Get the calculated rate value
-		rateValue := sumDP.DoubleValue()
-
-		// Set gauge value (this will be the rate)
-		gaugeDP.SetDoubleValue(rateValue)
-
-		// Copy attributes and update metric.type
 		sumDP.Attributes().CopyTo(gaugeDP.Attributes())
-		attrs := gaugeDP.Attributes()
 
-		// Convert source type from "rate" to "gauge" after processing
-		if sourceType, exists := attrs.Get("metric.type"); exists && sourceType.AsString() == "rate" {
-			attrs.PutStr("metric.type", "gauge")
+		// Copy value based on type
+		switch sumDP.ValueType() {
+		case pmetric.NumberDataPointValueTypeInt:
+			gaugeDP.SetIntValue(sumDP.IntValue())
+		case pmetric.NumberDataPointValueTypeDouble:
+			gaugeDP.SetDoubleValue(sumDP.DoubleValue())
+		}
+
+		// Copy exemplars if any
+		sumExemplars := sumDP.Exemplars()
+		gaugeExemplars := gaugeDP.Exemplars()
+		for j := 0; j < sumExemplars.Len(); j++ {
+			sumExemplar := sumExemplars.At(j)
+			gaugeExemplar := gaugeExemplars.AppendEmpty()
+			sumExemplar.CopyTo(gaugeExemplar)
 		}
 	}
 }
 
-func (ctrp *cumulativeToRateProcessor) processDataPoint(metricName string, dp pmetric.NumberDataPoint) {
-	// Create unique key for this metric series
-	key := ctrp.generateKey(metricName, dp.Attributes())
+func (ctrp *cumulativeToRateProcessor) processDataPoint(metricName string, dataPoint pmetric.NumberDataPoint) bool {
+	// Create a unique key for this data point series
+	seriesKey := ctrp.createSeriesKey(metricName, dataPoint.Attributes())
 
-	currentValue := dp.DoubleValue()
-	currentTime := dp.Timestamp().AsTime()
-	now := time.Now()
+	ctrp.stateMutex.Lock()
+	defer ctrp.stateMutex.Unlock()
 
-	// Check if we have previous state for this metric
-	if prevState, exists := ctrp.previousState[key]; exists {
-		// Update last seen time
-		prevState.lastSeen = now
+	currentTime := dataPoint.Timestamp().AsTime()
+	now := time.Now() // For TTL tracking
+	var currentValue float64
 
-		// Calculate rate: (Current Value - Previous Value) / (Current Time - Previous Time)
-		timeDiff := currentTime.Sub(prevState.timestamp).Seconds()
+	switch dataPoint.ValueType() {
+	case pmetric.NumberDataPointValueTypeInt:
+		currentValue = float64(dataPoint.IntValue())
+	case pmetric.NumberDataPointValueTypeDouble:
+		currentValue = dataPoint.DoubleValue()
+	}
+
+	if state, exists := ctrp.metricState[seriesKey]; exists {
+		// Calculate rate
+		timeDiff := currentTime.Sub(state.lastTimestamp).Seconds()
 		if timeDiff > 0 {
-			rate := (currentValue - prevState.value) / timeDiff
+			rate := (currentValue - state.lastValue) / timeDiff
 
-			// Check if rate is negative (counter reset or anomaly)
-			if rate < 0 {
-				ctrp.logger.Warn("Negative rate detected, skipping metric (possible counter reset)",
-					zap.String("metric", metricName),
-					zap.Float64("current_value", currentValue),
-					zap.Float64("previous_value", prevState.value),
+			// Skip if rate is negative or zero
+			if rate <= 0 {
+				ctrp.logger.Debug("Skipping data point due to non-positive rate",
+					zap.String("metric_name", metricName),
+					zap.String("series_key", seriesKey),
 					zap.Float64("rate", rate))
-				dp.SetFlags(pmetric.DefaultDataPointFlags.WithNoRecordedValue(true))
-			} else {
-				dp.SetDoubleValue(rate)
-				ctrp.logger.Debug("Calculated rate",
-					zap.String("metric", metricName),
-					zap.Float64("current_value", currentValue),
-					zap.Float64("previous_value", prevState.value),
-					zap.Float64("time_diff_seconds", timeDiff),
-					zap.Float64("rate", rate))
+				// Update state but don't include this data point
+				ctrp.metricState[seriesKey] = &metricSeriesState{
+					lastValue:     currentValue,
+					lastTimestamp: currentTime,
+					lastSeen:      now, // Update lastSeen for TTL
+				}
+				return false
 			}
-		} else {
-			// Time difference is 0 or negative, mark for removal
-			ctrp.logger.Warn("Invalid time difference for rate calculation",
-				zap.String("metric", metricName),
-				zap.Float64("time_diff_seconds", timeDiff))
-			dp.SetFlags(pmetric.DefaultDataPointFlags.WithNoRecordedValue(true))
+
+			// Update the data point with the rate value
+			if dataPoint.ValueType() == pmetric.NumberDataPointValueTypeInt {
+				dataPoint.SetIntValue(int64(rate))
+			} else {
+				dataPoint.SetDoubleValue(rate)
+			}
 		}
 	} else {
-		// First time seeing this metric, mark for removal (don't send)
-		ctrp.logger.Debug("First occurrence of metric, skipping current interval",
-			zap.String("metric", metricName))
-		dp.SetFlags(pmetric.DefaultDataPointFlags.WithNoRecordedValue(true))
+		// First time seeing this series, skip it but store the state
+		ctrp.logger.Debug("Skipping data point for first-time metric series",
+			zap.String("metric_name", metricName),
+			zap.String("series_key", seriesKey))
+
+		// Store initial state for future calculations
+		ctrp.metricState[seriesKey] = &metricSeriesState{
+			lastValue:     currentValue,
+			lastTimestamp: currentTime,
+			lastSeen:      now, // Set lastSeen for TTL
+		}
+		return false
 	}
 
-	// Replace previous state with current state (previous state becomes current state)
-	ctrp.previousState[key] = &metricState{
-		value:     currentValue,
-		timestamp: currentTime,
-		lastSeen:  now,
+	// Update state
+	ctrp.metricState[seriesKey] = &metricSeriesState{
+		lastValue:     currentValue,
+		lastTimestamp: currentTime,
+		lastSeen:      now, // Update lastSeen for TTL
 	}
+
+	return true
+}
+
+func (ctrp *cumulativeToRateProcessor) createSeriesKey(metricName string, attributes pcommon.Map) string {
+	return metricName + "|" + fmt.Sprintf("%x", pdatautil.MapHash(attributes))
+
+}
+
+func (ctrp *cumulativeToRateProcessor) cleanupOldState() {
+	ctrp.stateMutex.Lock()
+	defer ctrp.stateMutex.Unlock()
+
+	cutoffTime := time.Now().Add(-ctrp.config.StateTTL)
+	expiredKeys := make([]string, 0)
+
+	// Collect expired keys first (avoid modification during iteration)
+	for key, state := range ctrp.metricState {
+		if state.lastSeen.Before(cutoffTime) {
+			expiredKeys = append(expiredKeys, key)
+		}
+	}
+
+	// Delete expired entries
+	for _, key := range expiredKeys {
+		delete(ctrp.metricState, key)
+	}
+
+	// Log cleanup statistics
+	if len(expiredKeys) > 0 {
+		ctrp.logger.Debug("Cleaned up expired metric states",
+			zap.Int("expired_count", len(expiredKeys)),
+			zap.Int("remaining_count", len(ctrp.metricState)),
+			zap.Duration("ttl", ctrp.config.StateTTL))
+	}
+}
+
+func (ctrp *cumulativeToRateProcessor) shouldProcessMetric(metricName string) bool {
+	// If exclude list is specified and metric is in it, don't process
+	if len(ctrp.excludeSet) > 0 {
+		if ctrp.excludeSet[metricName] {
+			return false
+		}
+		// Also check for pattern matching (simple wildcard support)
+		for excludePattern := range ctrp.excludeSet {
+			if ctrp.matchesPattern(metricName, excludePattern) {
+				return false
+			}
+		}
+	}
+
+	// If include list is specified, only process if metric is in it
+	if len(ctrp.includeSet) > 0 {
+		if ctrp.includeSet[metricName] {
+			return true
+		}
+		// Also check for pattern matching (simple wildcard support)
+		for includePattern := range ctrp.includeSet {
+			if ctrp.matchesPattern(metricName, includePattern) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// If no include/exclude specified, process all metrics
+	return true
+}
+
+func (ctrp *cumulativeToRateProcessor) matchesPattern(metricName, pattern string) bool {
+	if strings.HasSuffix(pattern, "*") {
+		prefix := strings.TrimSuffix(pattern, "*")
+		return strings.HasPrefix(metricName, prefix)
+	}
+	return metricName == pattern
 }
 
 func (ctrp *cumulativeToRateProcessor) cleanupExpiredStates() {
@@ -246,42 +388,26 @@ func (ctrp *cumulativeToRateProcessor) cleanupExpiredStates() {
 }
 
 func (ctrp *cumulativeToRateProcessor) evictExpiredStates() {
-	ctrp.mutex.Lock()
-	defer ctrp.mutex.Unlock()
+	ctrp.stateMutex.Lock() // Use stateMutex instead of mutex
+	defer ctrp.stateMutex.Unlock()
 
 	now := time.Now()
+	cutoffTime := now.Add(-ctrp.config.StateTTL)
 	expiredKeys := make([]string, 0)
 
-	for key, state := range ctrp.previousState {
-		if now.Sub(state.lastSeen) > ctrp.config.StateTTL {
+	// Use metricState instead of previousState
+	for key, state := range ctrp.metricState {
+		if state.lastSeen.Before(cutoffTime) {
 			expiredKeys = append(expiredKeys, key)
 		}
 	}
 
 	if len(expiredKeys) > 0 {
 		for _, key := range expiredKeys {
-			delete(ctrp.previousState, key)
+			delete(ctrp.metricState, key)
 		}
 		ctrp.logger.Debug("Evicted expired metric states",
 			zap.Int("evicted_count", len(expiredKeys)),
-			zap.Int("remaining_count", len(ctrp.previousState)))
+			zap.Int("remaining_count", len(ctrp.metricState)))
 	}
-}
-
-func (ctrp *cumulativeToRateProcessor) generateKey(metricName string, attributes pcommon.Map) string {
-	var keyParts []string
-	keyParts = append(keyParts, metricName)
-
-	// Sort attributes to ensure consistent key generation
-	var attrPairs []string
-	attributes.Range(func(k string, v pcommon.Value) bool {
-		attrPairs = append(attrPairs, fmt.Sprintf("%s=%s", k, v.AsString()))
-		return true
-	})
-
-	// Sort to ensure consistent ordering
-	sort.Strings(attrPairs)
-	keyParts = append(keyParts, attrPairs...)
-
-	return strings.Join(keyParts, "|")
 }

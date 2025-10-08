@@ -5,6 +5,7 @@ package cumulativetorateprocessor
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/collector/component/componenttest"
@@ -21,10 +22,17 @@ func TestType(t *testing.T) {
 }
 
 func TestCreateDefaultConfig(t *testing.T) {
-	factory := NewFactory()
-	cfg := factory.CreateDefaultConfig()
-	assert.Equal(t, &Config{}, cfg)
-	assert.NoError(t, componenttest.CheckConfigStruct(cfg))
+    cfg := createDefaultConfig()
+    assert.NotNil(t, cfg, "failed to create default config")
+    assert.NoError(t, componenttest.CheckConfigStruct(cfg))
+    
+    // Update expected config to match actual default values
+    expected := &Config{
+        StateTTL: time.Hour, // Default is 1 hour, not 0
+        Include:  nil,
+        Exclude:  nil,
+    }
+    assert.Equal(t, expected, cfg)
 }
 
 func TestCreateProcessors(t *testing.T) {

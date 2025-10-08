@@ -135,7 +135,7 @@
 package models
 
 type InstanceBufferMetricsModel struct {
-	BufferPoolSize *int64 `db:"buffer_pool_size" metric_name:"sqlserver.instance.buffer_pool_size" source_type:"gauge" description:"Buffer pool size" unit:"By"`
+    BufferPoolSize *int64 `db:"instance_buffer_pool_size" metric_name:"sqlserver.instance.buffer_pool_size" source_type:"gauge" description:"Buffer pool size" unit:"By"`
 }
 
 type InstanceMemoryDefinitionsModel struct {

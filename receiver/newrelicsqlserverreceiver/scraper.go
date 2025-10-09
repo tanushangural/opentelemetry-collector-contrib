@@ -30,7 +30,8 @@ type sqlServerScraper struct {
 	queryPerformanceScraper *scrapers.QueryPerformanceScraper
 	//slowQueryScraper  *scrapers.SlowQueryScraper
 	databaseScraper *scrapers.DatabaseScraper
-	engineEdition   int // SQL Server engine edition (0=Unknown, 5=Azure DB, 8=Azure MI)
+	waitTimeScraper *scrapers.WaitTimeScraper // Add this line
+	engineEdition   int                       // SQL Server engine edition (0=Unknown, 5=Azure DB, 8=Azure MI)
 }
 
 // newSqlServerScraper creates a new SQL Server scraper with structured approach
@@ -81,6 +82,9 @@ func (s *sqlServerScraper) start(ctx context.Context, _ component.Host) error {
 	// Initialize query performance scraper for blocking sessions and performance monitoring
 	s.queryPerformanceScraper = scrapers.NewQueryPerformanceScraper(s.connection, s.logger, s.engineEdition)
 	//s.slowQueryScraper = scrapers.NewSlowQueryScraper(s.logger, s.connection)
+
+	// Initialize wait time scraper for wait time metrics
+	s.waitTimeScraper = scrapers.NewWaitTimeScraper(s.connection, s.logger, s.engineEdition)
 
 	s.logger.Info("Successfully connected to SQL Server",
 		zap.String("hostname", s.config.Hostname),
@@ -419,6 +423,20 @@ func (s *sqlServerScraper) scrape(ctx context.Context) (pmetric.Metrics, error) 
 		s.logger.Debug("Successfully scraped instance active connections metrics")
 	}
 
+	// Scrape instance-level buffer pool hit percent metrics
+	s.logger.Debug("Starting instance buffer pool hit percent metrics scraping")
+	scrapeCtx, cancel = context.WithTimeout(ctx, s.config.Timeout)
+	defer cancel()
+	if err := s.instanceScraper.ScrapeInstanceBufferPoolHitPercent(scrapeCtx, scopeMetrics); err != nil {
+		s.logger.Error("Failed to scrape instance buffer pool hit percent metrics",
+			zap.Error(err),
+			zap.Duration("timeout", s.config.Timeout))
+		scrapeErrors = append(scrapeErrors, err)
+		// Don't return here - continue with other metrics
+	} else {
+		s.logger.Debug("Successfully scraped instance buffer pool hit percent metrics")
+	}
+
 	// Scrape instance-level disk metrics
 	s.logger.Debug("Starting instance disk metrics scraping")
 	scrapeCtx, cancel = context.WithTimeout(ctx, s.config.Timeout)
@@ -459,6 +477,20 @@ func (s *sqlServerScraper) scrape(ctx context.Context) (pmetric.Metrics, error) 
 		// Don't return here - continue with other metrics
 	} else {
 		s.logger.Debug("Successfully scraped instance comprehensive statistics")
+	}
+
+	// Scrape wait time metrics
+	s.logger.Debug("Starting wait time metrics scraping")
+	scrapeCtx, cancel = context.WithTimeout(ctx, s.config.Timeout)
+	defer cancel()
+	if err := s.waitTimeScraper.ScrapeWaitTimeMetrics(scrapeCtx, scopeMetrics); err != nil {
+		s.logger.Error("Failed to scrape wait time metrics",
+			zap.Error(err),
+			zap.Duration("timeout", s.config.Timeout))
+		scrapeErrors = append(scrapeErrors, err)
+		// Don't return here - continue with other metrics
+	} else {
+		s.logger.Debug("Successfully scraped wait time metrics")
 	}
 
 	// Log summary of scraping results

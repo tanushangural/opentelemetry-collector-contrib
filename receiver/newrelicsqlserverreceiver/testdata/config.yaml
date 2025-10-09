@@ -5,7 +5,7 @@
 extensions:
   # Health check endpoint
   health_check:
-    endpoint: localhost:13133
+    endpoint: localhost:13134
 
 # Service configuration
 service:
@@ -17,7 +17,7 @@ service:
     # Metrics pipeline: receiver -> processor -> exporter
     metrics:
       receivers: [newrelicsqlserver]
-      processors: [memory_limiter, batch, resource]
+      processors: [memory_limiter, cumulativetorate, batch, resource]
       exporters: [otlphttp, debug]
   
   # Telemetry configuration for the collector itself
@@ -34,6 +34,34 @@ processors:
     check_interval: 1s
     limit_mib: 256
     spike_limit_mib: 64
+  
+  # Cumulative to rate processor converts cumulative metrics to rate metrics
+  cumulativetorate:
+    state_ttl: 60m
+    # Option 1: Include specific metrics (only these will be processed)
+    include:
+      - "sqlserver.stats.sql_compilations_per_sec"
+      - "sqlserver.stats.sql_recompilations_per_sec"
+      - "sqlserver.stats.lock_waits_per_sec"
+      - "sqlserver.access.page_splits_per_sec"
+      - "sqlserver.buffer.checkpoint_pages_per_sec"
+      - "sqlserver.stats.deadlocks_per_sec"
+      - "sqlserver.stats.user_errors_per_sec"
+      - "sqlserver.stats.kill_connection_errors_per_sec"
+      - "sqlserver.bufferpool.batch_requests_per_sec"
+      - "sqlserver.instance.transactions_per_sec"
+      - "sqlserver.instance.forced_parameterizations_per_sec"
+      # Add wait time metrics
+      - "sqlserver.wait_stats.wait_time_ms"
+      - "sqlserver.wait_stats.waiting_tasks_count"
+    
+    # Option 2: Exclude specific metrics (all others will be processed)
+    # exclude:
+    #   - "sqlserver.database.log.*"     # Exclude log growth metrics
+    #   - "sqlserver.instance.buffer_pool_size"  # Exclude specific metric
+    
+    # Option 3: No include/exclude (process all metrics) - default behavior
+    # Just specify state_ttl and it will process all cumulative metrics
   
   # Batch processor groups data for efficient transmission
   batch:
@@ -71,17 +99,16 @@ receivers:
     # connection_timeout: 30s
     
     # Collection interval (how often to collect metrics)
-    collection_interval: 60s
+    collection_interval: 15s
     
     # Optional: Initial delay before starting collection
     # initial_delay: 10s
-    
-    # Enable query performance monitoring (blocking sessions, slow queries, etc.)
+
+    # Query Monitoring Options
     enable_query_monitoring: true
-    
-    # Query monitoring thresholds (required when enable_query_monitoring is true)
-    query_monitoring_response_time_threshold: 1  # milliseconds - queries slower than this will be monitored
-    query_monitoring_count_threshold: 5          # minimum execution count for queries to be monitored
+    query_monitoring_response_time_threshold: 1
+    query_monitoring_count_threshold: 20
+    query_monitoring_fetch_interval: 15
 
 # Exporters send telemetry data to destinations
 exporters:

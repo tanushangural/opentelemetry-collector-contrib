@@ -98,6 +98,10 @@ const (
 	InstanceQueries = iota
 	DatabaseQueries
 	PerformanceQueries
+	UserConnectionQueries
+	FailoverClusterQueries
+	DatabasePrincipalsQueries
+	DatabaseRoleMembershipQueries
 )
 
 // QueryDefinition represents a SQL query with metadata
@@ -376,6 +380,414 @@ var databaseQueriesAzureManagedInstance = []*QueryDefinition{
 	},
 }
 
+// Query definitions for user connection metrics (Default/Standard SQL Server)
+var userConnectionQueriesDefault = []*QueryDefinition{
+	{
+		Query:       UserConnectionStatusQuery,
+		MetricName:  "sqlserver.user_connections.status.metrics",
+		Description: "User connection status distribution",
+	},
+	{
+		Query:       LoginLogoutQuery,
+		MetricName:  "sqlserver.user_connections.authentication.metrics",
+		Description: "Login/logout rate metrics",
+	},
+	{
+		Query:       LoginLogoutSummaryQuery,
+		MetricName:  "sqlserver.user_connections.authentication.summary",
+		Description: "Login/logout summary statistics",
+	},
+	{
+		Query:       FailedLoginQuery,
+		MetricName:  "sqlserver.user_connections.failed_logins.metrics",
+		Description: "Failed login attempts from error log",
+	},
+	{
+		Query:       FailedLoginSummaryQuery,
+		MetricName:  "sqlserver.user_connections.failed_logins_summary.metrics",
+		Description: "Failed login summary statistics",
+	},
+	{
+		Query:       UserConnectionSummaryQuery,
+		MetricName:  "sqlserver.user_connections.status.summary",
+		Description: "User connection summary statistics",
+	},
+	{
+		Query:       UserConnectionUtilizationQuery,
+		MetricName:  "sqlserver.user_connections.utilization",
+		Description: "User connection utilization metrics",
+	},
+	{
+		Query:       UserConnectionByClientQuery,
+		MetricName:  "sqlserver.user_connections.by_client",
+		Description: "User connections grouped by client",
+	},
+	{
+		Query:       UserConnectionClientSummaryQuery,
+		MetricName:  "sqlserver.user_connections.client.summary",
+		Description: "User connection client summary statistics",
+	},
+}
+
+// Query definitions for user connection metrics (Azure SQL Database)
+var userConnectionQueriesAzureDatabase = []*QueryDefinition{
+	{
+		Query:       UserConnectionStatusQueryAzureSQL,
+		MetricName:  "sqlserver.user_connections.status.metrics",
+		Description: "User connection status distribution (Azure SQL Database)",
+	},
+	{
+		Query:       LoginLogoutQueryAzureSQL,
+		MetricName:  "sqlserver.user_connections.authentication.metrics",
+		Description: "Login/logout rate metrics (Azure SQL Database)",
+	},
+	{
+		Query:       LoginLogoutSummaryQueryAzureSQL,
+		MetricName:  "sqlserver.user_connections.authentication.summary",
+		Description: "Login/logout summary statistics (Azure SQL Database)",
+	},
+	{
+		Query:       FailedLoginQueryAzureSQL,
+		MetricName:  "sqlserver.user_connections.failed_logins.metrics",
+		Description: "Failed login attempts from sys.event_log (Azure SQL Database)",
+	},
+	{
+		Query:       FailedLoginSummaryQueryAzureSQL,
+		MetricName:  "sqlserver.user_connections.failed_logins_summary.metrics",
+		Description: "Failed login summary statistics (Azure SQL Database)",
+	},
+	{
+		Query:       UserConnectionSummaryQueryAzureSQL,
+		MetricName:  "sqlserver.user_connections.status.summary",
+		Description: "User connection summary statistics (Azure SQL Database)",
+	},
+	{
+		Query:       UserConnectionUtilizationQueryAzureSQL,
+		MetricName:  "sqlserver.user_connections.utilization",
+		Description: "User connection utilization metrics (Azure SQL Database)",
+	},
+	{
+		Query:       UserConnectionByClientQueryAzureSQL,
+		MetricName:  "sqlserver.user_connections.by_client",
+		Description: "User connections grouped by client (Azure SQL Database)",
+	},
+	{
+		Query:       UserConnectionClientSummaryQueryAzureSQL,
+		MetricName:  "sqlserver.user_connections.client.summary",
+		Description: "User connection client summary statistics (Azure SQL Database)",
+	},
+}
+
+// Query definitions for user connection metrics (Azure SQL Managed Instance)
+var userConnectionQueriesAzureManagedInstance = []*QueryDefinition{
+	{
+		Query:       UserConnectionStatusQueryAzureMI,
+		MetricName:  "sqlserver.user_connections.status.metrics",
+		Description: "User connection status distribution (Azure SQL Managed Instance)",
+	},
+	{
+		Query:       LoginLogoutQueryAzureMI,
+		MetricName:  "sqlserver.user_connections.authentication.metrics",
+		Description: "Login/logout rate metrics (Azure SQL Managed Instance)",
+	},
+	{
+		Query:       LoginLogoutSummaryQueryAzureMI,
+		MetricName:  "sqlserver.user_connections.authentication.summary",
+		Description: "Login/logout summary statistics (Azure SQL Managed Instance)",
+	},
+	{
+		Query:       FailedLoginQueryAzureMI,
+		MetricName:  "sqlserver.user_connections.failed_logins.metrics",
+		Description: "Failed login attempts from error log (Azure SQL Managed Instance)",
+	},
+	{
+		Query:       FailedLoginSummaryQueryAzureMI,
+		MetricName:  "sqlserver.user_connections.failed_logins_summary.metrics",
+		Description: "Failed login summary statistics (Azure SQL Managed Instance)",
+	},
+	{
+		Query:       UserConnectionSummaryQueryAzureMI,
+		MetricName:  "sqlserver.user_connections.status.summary",
+		Description: "User connection summary statistics (Azure SQL Managed Instance)",
+	},
+	{
+		Query:       UserConnectionUtilizationQueryAzureMI,
+		MetricName:  "sqlserver.user_connections.utilization",
+		Description: "User connection utilization metrics (Azure SQL Managed Instance)",
+	},
+	{
+		Query:       UserConnectionByClientQueryAzureMI,
+		MetricName:  "sqlserver.user_connections.by_client",
+		Description: "User connections grouped by client (Azure SQL Managed Instance)",
+	},
+	{
+		Query:       UserConnectionClientSummaryQueryAzureMI,
+		MetricName:  "sqlserver.user_connections.client.summary",
+		Description: "User connection client summary statistics (Azure SQL Managed Instance)",
+	},
+}
+
+// Failover cluster query definitions for Default SQL Server
+var failoverClusterQueriesDefault = []*QueryDefinition{
+	{
+		Query:       FailoverClusterReplicaQuery,
+		MetricName:  "sqlserver.failover_cluster.replica_metrics",
+		Description: "Always On Availability Group replica performance metrics",
+	},
+	{
+		Query:       FailoverClusterReplicaStateQuery,
+		MetricName:  "sqlserver.failover_cluster.replica_state_metrics",
+		Description: "Always On Availability Group database replica state metrics",
+	},
+	{
+		Query:       FailoverClusterNodeQuery,
+		MetricName:  "sqlserver.failover_cluster.node_metrics",
+		Description: "Windows Server Failover Cluster node information and status",
+	},
+	{
+		Query:       FailoverClusterAvailabilityGroupHealthQuery,
+		MetricName:  "sqlserver.failover_cluster.availability_group_health_metrics",
+		Description: "Always On Availability Group health status metrics",
+	},
+	{
+		Query:       FailoverClusterAvailabilityGroupQuery,
+		MetricName:  "sqlserver.failover_cluster.availability_group_metrics",
+		Description: "Always On Availability Group configuration metrics",
+	},
+	{
+		Query:       FailoverClusterPerformanceCounterQuery,
+		MetricName:  "sqlserver.failover_cluster.performance_counter_metrics",
+		Description: "Always On Availability Group performance counter metrics",
+	},
+	{
+		Query:       FailoverClusterClusterPropertiesQuery,
+		MetricName:  "sqlserver.failover_cluster.cluster_properties_metrics",
+		Description: "Windows Server Failover Cluster properties and quorum information",
+	},
+}
+
+// Failover cluster query definitions for Azure SQL Database
+var failoverClusterQueriesAzureManagedDatabase = []*QueryDefinition{
+	{
+		Query:       FailoverClusterReplicaQueryAzureSQL,
+		MetricName:  "sqlserver.failover_cluster.replica_metrics",
+		Description: "Always On Availability Group replica metrics (not applicable for Azure SQL Database)",
+	},
+	{
+		Query:       FailoverClusterReplicaStateQueryAzureSQL,
+		MetricName:  "sqlserver.failover_cluster.replica_state_metrics",
+		Description: "Always On Availability Group replica state metrics (not applicable for Azure SQL Database)",
+	},
+	{
+		Query:       FailoverClusterNodeQueryAzureSQL,
+		MetricName:  "sqlserver.failover_cluster.node_metrics",
+		Description: "Cluster node metrics (not applicable for Azure SQL Database)",
+	},
+	{
+		Query:       FailoverClusterAvailabilityGroupHealthQueryAzureSQL,
+		MetricName:  "sqlserver.failover_cluster.availability_group_health_metrics",
+		Description: "Availability Group health metrics (not applicable for Azure SQL Database)",
+	},
+	{
+		Query:       FailoverClusterAvailabilityGroupQueryAzureSQL,
+		MetricName:  "sqlserver.failover_cluster.availability_group_metrics",
+		Description: "Availability Group configuration metrics (not applicable for Azure SQL Database)",
+	},
+	{
+		Query:       FailoverClusterPerformanceCounterQueryAzureSQL,
+		MetricName:  "sqlserver.failover_cluster.performance_counter_metrics",
+		Description: "Performance counter metrics (not applicable for Azure SQL Database)",
+	},
+	{
+		Query:       FailoverClusterClusterPropertiesQueryAzureSQL,
+		MetricName:  "sqlserver.failover_cluster.cluster_properties_metrics",
+		Description: "Cluster properties metrics (not applicable for Azure SQL Database)",
+	},
+}
+
+// Failover cluster query definitions for Azure SQL Managed Instance
+var failoverClusterQueriesAzureManagedInstance = []*QueryDefinition{
+	{
+		Query:       FailoverClusterReplicaQueryAzureMI,
+		MetricName:  "sqlserver.failover_cluster.replica_metrics",
+		Description: "Always On Availability Group replica metrics (limited support for Azure SQL Managed Instance)",
+	},
+	{
+		Query:       FailoverClusterReplicaStateQueryAzureMI,
+		MetricName:  "sqlserver.failover_cluster.replica_state_metrics",
+		Description: "Always On Availability Group replica state metrics (Azure SQL Managed Instance)",
+	},
+	{
+		Query:       FailoverClusterNodeQueryAzureMI,
+		MetricName:  "sqlserver.failover_cluster.node_metrics",
+		Description: "Cluster node metrics (limited support for Azure SQL Managed Instance)",
+	},
+	{
+		Query:       FailoverClusterAvailabilityGroupHealthQueryAzureMI,
+		MetricName:  "sqlserver.failover_cluster.availability_group_health_metrics",
+		Description: "Availability Group health metrics (Azure SQL Managed Instance)",
+	},
+	{
+		Query:       FailoverClusterAvailabilityGroupQueryAzureMI,
+		MetricName:  "sqlserver.failover_cluster.availability_group_metrics",
+		Description: "Availability Group configuration metrics (Azure SQL Managed Instance)",
+	},
+	{
+		Query:       FailoverClusterPerformanceCounterQueryAzureMI,
+		MetricName:  "sqlserver.failover_cluster.performance_counter_metrics",
+		Description: "Performance counter metrics (Azure SQL Managed Instance)",
+	},
+	{
+		Query:       FailoverClusterClusterPropertiesQueryAzureMI,
+		MetricName:  "sqlserver.failover_cluster.cluster_properties_metrics",
+		Description: "Cluster properties metrics (limited support for Azure SQL Managed Instance)",
+	},
+}
+
+// Database principals query definitions for Standard SQL Server
+var databasePrincipalsQueriesDefault = []*QueryDefinition{
+	{
+		Query:       DatabasePrincipalsQuery,
+		MetricName:  "sqlserver.database.principals.details",
+		Description: "Database security principals information",
+	},
+	{
+		Query:       DatabasePrincipalsSummaryQuery,
+		MetricName:  "sqlserver.database.principals.summary",
+		Description: "Database principals summary statistics",
+	},
+	{
+		Query:       DatabasePrincipalActivityQuery,
+		MetricName:  "sqlserver.database.principals.activity",
+		Description: "Database principals activity and lifecycle metrics",
+	},
+}
+
+// Database principals query definitions for Azure SQL Database
+var databasePrincipalsQueriesAzureDatabase = []*QueryDefinition{
+	{
+		Query:       DatabasePrincipalsQueryAzureSQL,
+		MetricName:  "sqlserver.database.principals.details",
+		Description: "Database security principals information (Azure SQL Database)",
+	},
+	{
+		Query:       DatabasePrincipalsSummaryQueryAzureSQL,
+		MetricName:  "sqlserver.database.principals.summary",
+		Description: "Database principals summary statistics (Azure SQL Database)",
+	},
+	{
+		Query:       DatabasePrincipalActivityQueryAzureSQL,
+		MetricName:  "sqlserver.database.principals.activity",
+		Description: "Database principals activity and lifecycle metrics (Azure SQL Database)",
+	},
+}
+
+// Database principals query definitions for Azure SQL Managed Instance
+var databasePrincipalsQueriesAzureManagedInstance = []*QueryDefinition{
+	{
+		Query:       DatabasePrincipalsQueryAzureMI,
+		MetricName:  "sqlserver.database.principals.details",
+		Description: "Database security principals information (Azure SQL Managed Instance)",
+	},
+	{
+		Query:       DatabasePrincipalsSummaryQueryAzureMI,
+		MetricName:  "sqlserver.database.principals.summary",
+		Description: "Database principals summary statistics (Azure SQL Managed Instance)",
+	},
+	{
+		Query:       DatabasePrincipalActivityQueryAzureMI,
+		MetricName:  "sqlserver.database.principals.activity",
+		Description: "Database principals activity and lifecycle metrics (Azure SQL Managed Instance)",
+	},
+}
+
+// Database role membership query definitions for Standard SQL Server
+var databaseRoleMembershipQueriesDefault = []*QueryDefinition{
+	{
+		Query:       DatabaseRoleMembershipMetricsQuery,
+		MetricName:  "database_role_membership",
+		Description: "Database role membership relationships",
+	},
+	{
+		Query:       DatabaseRoleMembershipSummaryQuery,
+		MetricName:  "database_role_membership_summary",
+		Description: "Database role membership summary statistics",
+	},
+	{
+		Query:       DatabaseRoleHierarchyQuery,
+		MetricName:  "database_role_hierarchy",
+		Description: "Database role hierarchy and nesting information",
+	},
+	{
+		Query:       DatabaseRoleActivityQuery,
+		MetricName:  "database_role_activity",
+		Description: "Database role activity and usage metrics",
+	},
+	{
+		Query:       DatabaseRolePermissionMatrixQuery,
+		MetricName:  "database_role_permission_matrix",
+		Description: "Database role permission matrix analysis",
+	},
+}
+
+// Database role membership query definitions for Azure SQL Database
+var databaseRoleMembershipQueriesAzureDatabase = []*QueryDefinition{
+	{
+		Query:       DatabaseRoleMembershipMetricsQuery,
+		MetricName:  "database_role_membership",
+		Description: "Database role membership relationships (Azure SQL Database)",
+	},
+	{
+		Query:       DatabaseRoleMembershipSummaryQuery,
+		MetricName:  "database_role_membership_summary",
+		Description: "Database role membership summary statistics (Azure SQL Database)",
+	},
+	{
+		Query:       DatabaseRoleHierarchyQuery,
+		MetricName:  "database_role_hierarchy",
+		Description: "Database role hierarchy and nesting information (Azure SQL Database)",
+	},
+	{
+		Query:       DatabaseRoleActivityQuery,
+		MetricName:  "database_role_activity",
+		Description: "Database role activity and usage metrics (Azure SQL Database)",
+	},
+	{
+		Query:       DatabaseRolePermissionMatrixQuery,
+		MetricName:  "database_role_permission_matrix",
+		Description: "Database role permission matrix analysis (Azure SQL Database)",
+	},
+}
+
+// Database role membership query definitions for Azure SQL Managed Instance
+var databaseRoleMembershipQueriesAzureManagedInstance = []*QueryDefinition{
+	{
+		Query:       DatabaseRoleMembershipMetricsQuery,
+		MetricName:  "database_role_membership",
+		Description: "Database role membership relationships (Azure SQL Managed Instance)",
+	},
+	{
+		Query:       DatabaseRoleMembershipSummaryQuery,
+		MetricName:  "database_role_membership_summary",
+		Description: "Database role membership summary statistics (Azure SQL Managed Instance)",
+	},
+	{
+		Query:       DatabaseRoleHierarchyQuery,
+		MetricName:  "database_role_hierarchy",
+		Description: "Database role hierarchy and nesting information (Azure SQL Managed Instance)",
+	},
+	{
+		Query:       DatabaseRoleActivityQuery,
+		MetricName:  "database_role_activity",
+		Description: "Database role activity and usage metrics (Azure SQL Managed Instance)",
+	},
+	{
+		Query:       DatabaseRolePermissionMatrixQuery,
+		MetricName:  "database_role_permission_matrix",
+		Description: "Database role permission matrix analysis (Azure SQL Managed Instance)",
+	},
+}
+
 // queryDefinitionSets maps query types to engine-specific query sets
 var queryDefinitionSets = map[QueryDefinitionType]EngineSet[[]*QueryDefinition]{
 	InstanceQueries: {
@@ -387,6 +799,26 @@ var queryDefinitionSets = map[QueryDefinitionType]EngineSet[[]*QueryDefinition]{
 		Default:                 databaseQueriesDefault,
 		AzureSQLDatabase:        databaseQueriesAzureManagedDatabase,
 		AzureSQLManagedInstance: databaseQueriesAzureManagedInstance,
+	},
+	UserConnectionQueries: {
+		Default:                 userConnectionQueriesDefault,
+		AzureSQLDatabase:        userConnectionQueriesAzureDatabase,
+		AzureSQLManagedInstance: userConnectionQueriesAzureManagedInstance,
+	},
+	FailoverClusterQueries: {
+		Default:                 failoverClusterQueriesDefault,
+		AzureSQLDatabase:        failoverClusterQueriesAzureManagedDatabase,
+		AzureSQLManagedInstance: failoverClusterQueriesAzureManagedInstance,
+	},
+	DatabasePrincipalsQueries: {
+		Default:                 databasePrincipalsQueriesDefault,
+		AzureSQLDatabase:        databasePrincipalsQueriesAzureDatabase,
+		AzureSQLManagedInstance: databasePrincipalsQueriesAzureManagedInstance,
+	},
+	DatabaseRoleMembershipQueries: {
+		Default:                 databaseRoleMembershipQueriesDefault,
+		AzureSQLDatabase:        databaseRoleMembershipQueriesAzureDatabase,
+		AzureSQLManagedInstance: databaseRoleMembershipQueriesAzureManagedInstance,
 	},
 }
 

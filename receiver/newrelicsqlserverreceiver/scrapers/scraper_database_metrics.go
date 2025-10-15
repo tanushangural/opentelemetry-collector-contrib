@@ -1028,7 +1028,7 @@ func (s *DatabaseScraper) ScrapeDatabaseMemoryMetrics(ctx context.Context, scope
 		return fmt.Errorf("memory query not found for engine edition %d", s.engineEdition)
 	}
 
-	s.logger.Debug("Executing memory query", 
+	s.logger.Debug("Executing memory query",
 		zap.String("query", queries.TruncateQuery(query, 100)),
 		zap.String("engine_type", queries.GetEngineTypeName(s.engineEdition)))
 
@@ -1129,3 +1129,464 @@ func (s *DatabaseScraper) processDatabaseMemoryResults(scopeMetrics pmetric.Scop
 
 	return nil
 }
+
+// ScrapeDatabaseSizeMetrics scrapes basic database size metrics for SQL Server databases
+func (s *DatabaseScraper) ScrapeDatabaseSizeMetrics(ctx context.Context, scopeMetrics pmetric.ScopeMetrics) error {
+	s.logger.Debug("Scraping SQL Server database size metrics")
+
+	// Get the appropriate query for this engine edition
+	query, found := s.getQueryForMetric("sqlserver.database.size_metrics")
+	if !found {
+		return fmt.Errorf("no database size metrics query available for engine edition %d", s.engineEdition)
+	}
+
+	s.logger.Debug("Executing database size metrics query",
+		zap.String("query", queries.TruncateQuery(query, 100)),
+		zap.String("engine_type", queries.GetEngineTypeName(s.engineEdition)))
+
+	var results []models.DatabaseSizeMetrics
+	if err := s.connection.Query(ctx, &results, query); err != nil {
+		s.logger.Error("Failed to execute database size query",
+			zap.Error(err),
+			zap.String("query", queries.TruncateQuery(query, 100)),
+			zap.Int("engine_edition", s.engineEdition))
+		return fmt.Errorf("failed to execute database size query: %w", err)
+	}
+
+	if len(results) == 0 {
+		s.logger.Warn("No results returned from database size query")
+		return fmt.Errorf("no results returned from database size query")
+	}
+
+	s.logger.Debug("Processing database size metrics results",
+		zap.Int("result_count", len(results)))
+
+	// Process each database's size metrics
+	for _, result := range results {
+		if err := s.processDatabaseSizeMetrics(result, scopeMetrics); err != nil {
+			s.logger.Error("Failed to process database size metrics",
+				zap.Error(err),
+				zap.String("database_name", result.DatabaseName))
+			continue
+		}
+	}
+
+	s.logger.Debug("Successfully scraped database size metrics",
+		zap.Int("metric_count", len(results)))
+
+	return nil
+}
+
+// processDatabaseSizeMetrics processes individual database size metrics using reflection
+func (s *DatabaseScraper) processDatabaseSizeMetrics(result models.DatabaseSizeMetrics, scopeMetrics pmetric.ScopeMetrics) error {
+	// Use reflection to process the struct fields with metric tags
+	resultValue := reflect.ValueOf(result)
+	resultType := reflect.TypeOf(result)
+
+	for i := 0; i < resultValue.NumField(); i++ {
+		field := resultValue.Field(i)
+		fieldType := resultType.Field(i)
+
+		// Skip nil values and non-metric fields
+		if field.Kind() == reflect.Ptr && field.IsNil() {
+			continue
+		}
+
+		// Get metric metadata from struct tags
+		metricName := fieldType.Tag.Get("metric_name")
+
+		if metricName == "" {
+			continue
+		}
+
+		// Create the metric
+		metric := scopeMetrics.Metrics().AppendEmpty()
+		metric.SetName(metricName)
+
+		// Set description and unit based on metric name
+		switch metricName {
+		case "sqlserver.database.size.totalSizeMB":
+			metric.SetDescription("Total database size (data + log files) in MB for SQL Server database")
+			metric.SetUnit("MB")
+		case "sqlserver.database.size.dataSizeMB":
+			metric.SetDescription("Total data file size in MB for SQL Server database")
+			metric.SetUnit("MB")
+		default:
+			metric.SetDescription(fmt.Sprintf("SQL Server database size metric %s", metricName))
+			metric.SetUnit("MB")
+		}
+
+		// Create gauge metric (for size metrics)
+		gauge := metric.SetEmptyGauge()
+		dataPoint := gauge.DataPoints().AppendEmpty()
+		dataPoint.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+		dataPoint.SetStartTimestamp(s.startTime)
+
+		// Handle pointer fields and set the value
+		fieldValue := field
+		if field.Kind() == reflect.Ptr {
+			if field.IsNil() {
+				return fmt.Errorf("field value is nil for metric %s", metricName)
+			}
+			fieldValue = field.Elem()
+		}
+
+		// Set the value based on field type
+		switch fieldValue.Kind() {
+		case reflect.Float64:
+			value := fieldValue.Float()
+			dataPoint.SetDoubleValue(value)
+			s.logger.Debug("Set database size metric value",
+				zap.String("metric_name", metricName),
+				zap.String("database_name", result.DatabaseName),
+				zap.Float64("value", value))
+		case reflect.Int, reflect.Int64:
+			value := fieldValue.Int()
+			dataPoint.SetIntValue(value)
+			s.logger.Debug("Set database size metric value",
+				zap.String("metric_name", metricName),
+				zap.String("database_name", result.DatabaseName),
+				zap.Int64("value", value))
+		default:
+			return fmt.Errorf("unsupported field type %v for metric %s", fieldValue.Kind(), metricName)
+		}
+
+		// Add database name as attribute
+		dataPoint.Attributes().PutStr("database_name", result.DatabaseName)
+	}
+
+	return nil
+}
+
+// ScrapeDatabaseTransactionLogMetrics scrapes transaction log performance metrics for SQL Server databases
+func (s *DatabaseScraper) ScrapeDatabaseTransactionLogMetrics(ctx context.Context, scopeMetrics pmetric.ScopeMetrics) error {
+	s.logger.Debug("Scraping SQL Server database transaction log metrics")
+
+	// Get the appropriate query for this engine edition
+	query, found := s.getQueryForMetric("sqlserver.database.transaction_log_metrics")
+	if !found {
+		return fmt.Errorf("no database transaction log metrics query available for engine edition %d", s.engineEdition)
+	}
+
+	s.logger.Debug("Executing database transaction log metrics query",
+		zap.String("query", queries.TruncateQuery(query, 100)),
+		zap.String("engine_type", queries.GetEngineTypeName(s.engineEdition)))
+
+	var results []models.DatabaseTransactionLogMetrics
+	if err := s.connection.Query(ctx, &results, query); err != nil {
+		s.logger.Error("Failed to execute database transaction log query",
+			zap.Error(err),
+			zap.String("query", queries.TruncateQuery(query, 100)),
+			zap.Int("engine_edition", s.engineEdition))
+		return fmt.Errorf("failed to execute database transaction log query: %w", err)
+	}
+
+	if len(results) == 0 {
+		s.logger.Warn("No results returned from database transaction log query")
+		return fmt.Errorf("no results returned from database transaction log query")
+	}
+
+	s.logger.Debug("Processing database transaction log metrics results",
+		zap.Int("result_count", len(results)))
+
+	// Process each result (should be only one for the aggregated counters)
+	for _, result := range results {
+		if err := s.processDatabaseTransactionLogMetrics(result, scopeMetrics); err != nil {
+			s.logger.Error("Failed to process database transaction log metrics",
+				zap.Error(err))
+			continue
+		}
+	}
+
+	s.logger.Debug("Successfully scraped database transaction log metrics",
+		zap.Int("metric_count", len(results)))
+
+	return nil
+}
+
+// processDatabaseTransactionLogMetrics processes individual database transaction log metrics using reflection
+func (s *DatabaseScraper) processDatabaseTransactionLogMetrics(result models.DatabaseTransactionLogMetrics, scopeMetrics pmetric.ScopeMetrics) error {
+	// Use reflection to process the struct fields with metric tags
+	resultValue := reflect.ValueOf(result)
+	resultType := reflect.TypeOf(result)
+
+	for i := 0; i < resultValue.NumField(); i++ {
+		field := resultValue.Field(i)
+		fieldType := resultType.Field(i)
+
+		// Skip nil values and non-metric fields
+		if field.Kind() == reflect.Ptr && field.IsNil() {
+			continue
+		}
+
+		// Get metric metadata from struct tags
+		metricName := fieldType.Tag.Get("metric_name")
+
+		if metricName == "" {
+			continue
+		}
+
+		// Create the metric
+		metric := scopeMetrics.Metrics().AppendEmpty()
+		metric.SetName(metricName)
+
+		// Set description and unit based on metric name
+		switch metricName {
+		case "sqlserver.database.log.flushesPerSec":
+			metric.SetDescription("Number of log flush operations per second for SQL Server database")
+			metric.SetUnit("operations/sec")
+		case "sqlserver.database.log.bytesFlushesPerSec":
+			metric.SetDescription("Number of log bytes flushed per second for SQL Server database")
+			metric.SetUnit("bytes/sec")
+		case "sqlserver.database.log.flushWaitsPerSec":
+			metric.SetDescription("Number of flush wait operations per second for SQL Server database")
+			metric.SetUnit("operations/sec")
+		case "sqlserver.database.transactions.active":
+			metric.SetDescription("Number of active transactions for SQL Server database")
+			metric.SetUnit("count")
+		default:
+			metric.SetDescription(fmt.Sprintf("SQL Server database transaction log metric %s", metricName))
+			metric.SetUnit("1")
+		}
+
+		// Create gauge metric (for transaction log metrics)
+		gauge := metric.SetEmptyGauge()
+		dataPoint := gauge.DataPoints().AppendEmpty()
+		dataPoint.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+		dataPoint.SetStartTimestamp(s.startTime)
+
+		// Handle pointer fields and set the value
+		fieldValue := field
+		if field.Kind() == reflect.Ptr {
+			if field.IsNil() {
+				return fmt.Errorf("field value is nil for metric %s", metricName)
+			}
+			fieldValue = field.Elem()
+		}
+
+		// Set the value based on field type
+		switch fieldValue.Kind() {
+		case reflect.Int, reflect.Int64:
+			value := fieldValue.Int()
+			dataPoint.SetIntValue(value)
+			s.logger.Debug("Set database transaction log metric value",
+				zap.String("metric_name", metricName),
+				zap.Int64("value", value))
+		default:
+			return fmt.Errorf("unsupported field type %v for metric %s", fieldValue.Kind(), metricName)
+		}
+
+		// Add instance-level attributes (these are not per-database metrics)
+		// Transaction log metrics from _Total instance represent overall server activity
+	}
+
+	return nil
+}
+
+// ScrapeDatabaseLogSpaceUsageMetrics scrapes database log space usage metrics for SQL Server databases
+func (s *DatabaseScraper) ScrapeDatabaseLogSpaceUsageMetrics(ctx context.Context, scopeMetrics pmetric.ScopeMetrics) error {
+	s.logger.Debug("Scraping SQL Server database log space usage metrics")
+
+	// Get the appropriate query for this engine edition
+	query, found := s.getQueryForMetric("sqlserver.database.log_space_usage_metrics")
+	if !found {
+		return fmt.Errorf("no database log space usage metrics query available for engine edition %d", s.engineEdition)
+	}
+
+	s.logger.Debug("Executing database log space usage metrics query",
+		zap.String("query", queries.TruncateQuery(query, 100)),
+		zap.String("engine_type", queries.GetEngineTypeName(s.engineEdition)))
+
+	// Check if this is a database-specific query that needs database iteration
+	if s.engineEdition == queries.StandardSQLServerEngineEdition {
+		// For default SQL Server, we need to iterate through databases
+		return s.scrapeDatabaseLogSpaceUsageWithIteration(ctx, scopeMetrics, query)
+	}
+
+	// For Azure SQL Database and Azure SQL Managed Instance, execute directly
+	var results []models.DatabaseLogSpaceUsageMetrics
+	if err := s.connection.Query(ctx, &results, query); err != nil {
+		s.logger.Error("Failed to execute database log space usage query",
+			zap.Error(err),
+			zap.String("query", queries.TruncateQuery(query, 100)),
+			zap.Int("engine_edition", s.engineEdition))
+		return fmt.Errorf("failed to execute database log space usage query: %w", err)
+	}
+
+	if len(results) == 0 {
+		s.logger.Warn("No results returned from database log space usage query")
+		return fmt.Errorf("no results returned from database log space usage query")
+	}
+
+	s.logger.Debug("Processing database log space usage metrics results",
+		zap.Int("result_count", len(results)))
+
+	// Process each database's log space usage metrics
+	for _, result := range results {
+		if err := s.processDatabaseLogSpaceUsageMetrics(result, scopeMetrics); err != nil {
+			s.logger.Error("Failed to process database log space usage metrics",
+				zap.Error(err))
+			continue
+		}
+	}
+
+	s.logger.Debug("Successfully scraped database log space usage metrics",
+		zap.Int("metric_count", len(results)))
+
+	return nil
+}
+
+// scrapeDatabaseLogSpaceUsageWithIteration handles log space usage metrics for engines that require database iteration
+func (s *DatabaseScraper) scrapeDatabaseLogSpaceUsageWithIteration(ctx context.Context, scopeMetrics pmetric.ScopeMetrics, queryTemplate string) error {
+	// Get the appropriate database list query for this engine edition
+	databasesQuery, found := s.getQueryForMetric("sqlserver.database.list")
+	if !found {
+		return fmt.Errorf("no database list query available for engine edition %d", s.engineEdition)
+	}
+
+	var databases []struct {
+		Name string `db:"name"`
+	}
+
+	if err := s.connection.Query(ctx, &databases, databasesQuery); err != nil {
+		return fmt.Errorf("failed to get database list: %w", err)
+	}
+
+	s.logger.Debug("Found databases for log space usage metrics",
+		zap.Int("database_count", len(databases)))
+
+	// Iterate through each database and collect log space usage metrics
+	for _, db := range databases {
+		s.logger.Debug("Processing log space usage metrics for database",
+			zap.String("database_name", db.Name))
+
+		// Execute query in the context of each database
+		// For log space usage, we need to USE the database and then query sys.dm_db_log_space_usage
+		contextualQuery := fmt.Sprintf("USE [%s]; %s", db.Name, queryTemplate)
+
+		var results []models.DatabaseLogSpaceUsageMetrics
+		if err := s.connection.Query(ctx, &results, contextualQuery); err != nil {
+			s.logger.Error("Failed to execute log space usage metrics query for database",
+				zap.String("database_name", db.Name),
+				zap.Error(err))
+			continue
+		}
+
+		// Process results for this database
+		for _, result := range results {
+			// Set the database name since the query doesn't include it
+			// We need to create a new struct with the database name
+			enrichedResult := models.DatabaseLogSpaceUsageMetrics{
+				UsedLogSpaceMB: result.UsedLogSpaceMB,
+			}
+
+			if err := s.processDatabaseLogSpaceUsageMetricsWithDBName(enrichedResult, db.Name, scopeMetrics); err != nil {
+				s.logger.Error("Failed to process database log space usage metrics",
+					zap.String("database_name", db.Name),
+					zap.Error(err))
+				continue
+			}
+
+			if enrichedResult.UsedLogSpaceMB != nil {
+				s.logger.Info("Successfully scraped SQL Server database log space usage metrics",
+					zap.String("database_name", db.Name),
+					zap.Float64("used_log_space_mb", *enrichedResult.UsedLogSpaceMB))
+			}
+		}
+	}
+
+	return nil
+}
+
+// processDatabaseLogSpaceUsageMetrics processes individual database log space usage metrics using reflection
+func (s *DatabaseScraper) processDatabaseLogSpaceUsageMetrics(result models.DatabaseLogSpaceUsageMetrics, scopeMetrics pmetric.ScopeMetrics) error {
+	// For Azure editions, we need to determine the database name from the context
+	databaseName := "current_database" // Default for Azure SQL Database
+	return s.processDatabaseLogSpaceUsageMetricsWithDBName(result, databaseName, scopeMetrics)
+}
+
+// processDatabaseLogSpaceUsageMetricsWithDBName processes individual database log space usage metrics with database name
+func (s *DatabaseScraper) processDatabaseLogSpaceUsageMetricsWithDBName(result models.DatabaseLogSpaceUsageMetrics, databaseName string, scopeMetrics pmetric.ScopeMetrics) error {
+	// Use reflection to process the struct fields with metric tags
+	resultValue := reflect.ValueOf(result)
+	resultType := reflect.TypeOf(result)
+
+	for i := 0; i < resultValue.NumField(); i++ {
+		field := resultValue.Field(i)
+		fieldType := resultType.Field(i)
+
+		// Skip nil values and non-metric fields
+		if field.Kind() == reflect.Ptr && field.IsNil() {
+			continue
+		}
+
+		// Get metric metadata from struct tags
+		metricName := fieldType.Tag.Get("metric_name")
+
+		if metricName == "" {
+			continue
+		}
+
+		// Create the metric
+		metric := scopeMetrics.Metrics().AppendEmpty()
+		metric.SetName(metricName)
+
+		// Set description and unit based on metric name
+		switch metricName {
+		case "sqlserver.database.log.usedSpaceMB":
+			metric.SetDescription("Used log space in megabytes for SQL Server database")
+			metric.SetUnit("MB")
+		default:
+			metric.SetDescription(fmt.Sprintf("SQL Server database log space usage metric %s", metricName))
+			metric.SetUnit("1")
+		}
+
+		// Create gauge metric (for log space usage metrics)
+		gauge := metric.SetEmptyGauge()
+		dataPoint := gauge.DataPoints().AppendEmpty()
+		dataPoint.SetTimestamp(pcommon.NewTimestampFromTime(time.Now()))
+		dataPoint.SetStartTimestamp(s.startTime)
+
+		// Handle pointer fields and set the value
+		fieldValue := field
+		if field.Kind() == reflect.Ptr {
+			if field.IsNil() {
+				return fmt.Errorf("field value is nil for metric %s", metricName)
+			}
+			fieldValue = field.Elem()
+		}
+
+		// Set the value based on field type
+		switch fieldValue.Kind() {
+		case reflect.Float64:
+			value := fieldValue.Float()
+			dataPoint.SetDoubleValue(value)
+			s.logger.Debug("Set database log space usage metric value",
+				zap.String("metric_name", metricName),
+				zap.String("database_name", databaseName),
+				zap.Float64("value", value))
+		case reflect.Int, reflect.Int64:
+			value := fieldValue.Int()
+			dataPoint.SetIntValue(value)
+			s.logger.Debug("Set database log space usage metric value",
+				zap.String("metric_name", metricName),
+				zap.String("database_name", databaseName),
+				zap.Int64("value", value))
+		default:
+			return fmt.Errorf("unsupported field type %v for metric %s", fieldValue.Kind(), metricName)
+		}
+
+		// Add database name as attribute
+		dataPoint.Attributes().PutStr("database_name", databaseName)
+		dataPoint.Attributes().PutStr("metric.type", "gauge")
+		dataPoint.Attributes().PutStr("metric.source", "sys.dm_db_log_space_usage")
+		dataPoint.Attributes().PutStr("engine_edition", queries.GetEngineTypeName(s.engineEdition))
+		dataPoint.Attributes().PutInt("engine_edition_id", int64(s.engineEdition))
+	}
+
+	return nil
+}
+
+/* Duplicate ScrapeDatabaseDiskMetrics removed to resolve redeclaration error. */
+
+/* Duplicate processDatabaseDiskMetrics removed to resolve redeclaration error. */

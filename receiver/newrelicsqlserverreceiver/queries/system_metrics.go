@@ -52,7 +52,10 @@ END
 SELECT
 	 REPLACE(@@SERVERNAME,'\',':') AS [sql_instance]
 	,HOST_NAME() AS [computer_name]
-	,@@SERVICENAME AS [service_name]
+	,CASE 
+		WHEN SERVERPROPERTY('EngineEdition') = 5 THEN 'Azure SQL Database'
+		ELSE @@SERVICENAME 
+	 END AS [service_name]
 	,si.[cpu_count]
 	,(SELECT [total_physical_memory_kb] FROM sys.[dm_os_sys_memory]) AS [server_memory]
 	,(SELECT [available_physical_memory_kb] FROM sys.[dm_os_sys_memory]) AS [available_server_memory]

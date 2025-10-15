@@ -202,28 +202,6 @@ func (s *sqlServerScraper) scrape(ctx context.Context) (pmetric.Metrics, error) 
 		}
 	}
 
-	// Scrape database-level disk metrics (maxDiskSizeInBytes)
-	s.logger.Debug("Checking disk metrics configuration",
-		zap.Bool("enable_disk_metrics_in_bytes", s.config.EnableDiskMetricsInBytes))
-
-	if s.config.IsDiskMetricsInBytesEnabled() {
-		s.logger.Debug("Starting database disk metrics scraping")
-		scrapeCtx, cancel := context.WithTimeout(ctx, s.config.Timeout)
-		defer cancel()
-
-		if err := s.databaseScraper.ScrapeDatabaseDiskMetrics(scrapeCtx, scopeMetrics); err != nil {
-			s.logger.Error("Failed to scrape database disk metrics",
-				zap.Error(err),
-				zap.Duration("timeout", s.config.Timeout))
-			scrapeErrors = append(scrapeErrors, err)
-			// Don't return here - continue with other metrics
-		} else {
-			s.logger.Debug("Successfully scraped database disk metrics")
-		}
-	} else {
-		s.logger.Debug("Database disk metrics disabled in configuration")
-	}
-
 	// Scrape database-level IO metrics (io.stallInMilliseconds)
 	if s.config.IsIOMetricsEnabled() {
 		s.logger.Debug("Starting database IO metrics scraping")
@@ -319,6 +297,82 @@ func (s *sqlServerScraper) scrape(ctx context.Context) (pmetric.Metrics, error) 
 		s.logger.Debug("Database memory metrics disabled in configuration")
 	}
 
+	// Scrape database size metrics (total size and data size in MB)
+	if s.config.IsDatabaseSizeMetricsEnabled() {
+		s.logger.Debug("Starting database size metrics scraping")
+		scrapeCtx, cancel := context.WithTimeout(ctx, s.config.Timeout)
+		defer cancel()
+
+		if err := s.databaseScraper.ScrapeDatabaseSizeMetrics(scrapeCtx, scopeMetrics); err != nil {
+			s.logger.Error("Failed to scrape database size metrics",
+				zap.Error(err),
+				zap.Duration("timeout", s.config.Timeout))
+			scrapeErrors = append(scrapeErrors, err)
+			// Don't return here - continue with other metrics
+		} else {
+			s.logger.Debug("Successfully scraped database size metrics")
+		}
+	} else {
+		s.logger.Debug("Database size metrics disabled in configuration")
+	}
+
+	// Scrape database disk metrics (max disk size for Azure SQL Database)
+	if s.config.IsDiskMetricsInBytesEnabled() {
+		s.logger.Debug("Starting database disk metrics scraping")
+		scrapeCtx, cancel := context.WithTimeout(ctx, s.config.Timeout)
+		defer cancel()
+
+		if err := s.databaseScraper.ScrapeDatabaseDiskMetrics(scrapeCtx, scopeMetrics); err != nil {
+			s.logger.Error("Failed to scrape database disk metrics",
+				zap.Error(err),
+				zap.Duration("timeout", s.config.Timeout))
+			scrapeErrors = append(scrapeErrors, err)
+			// Don't return here - continue with other metrics
+		} else {
+			s.logger.Debug("Successfully scraped database disk metrics")
+		}
+	} else {
+		s.logger.Debug("Database disk metrics disabled in configuration")
+	}
+
+	// Scrape database transaction log metrics (flushes, bytes flushed, flush waits, active transactions)
+	if s.config.IsDatabaseTransactionLogMetricsEnabled() {
+		s.logger.Debug("Starting database transaction log metrics scraping")
+		scrapeCtx, cancel := context.WithTimeout(ctx, s.config.Timeout)
+		defer cancel()
+
+		if err := s.databaseScraper.ScrapeDatabaseTransactionLogMetrics(scrapeCtx, scopeMetrics); err != nil {
+			s.logger.Error("Failed to scrape database transaction log metrics",
+				zap.Error(err),
+				zap.Duration("timeout", s.config.Timeout))
+			scrapeErrors = append(scrapeErrors, err)
+			// Don't return here - continue with other metrics
+		} else {
+			s.logger.Debug("Successfully scraped database transaction log metrics")
+		}
+	} else {
+		s.logger.Debug("Database transaction log metrics disabled in configuration")
+	}
+
+	// Scrape database log space usage metrics (used log space in MB)
+	if s.config.IsDatabaseLogSpaceUsageMetricsEnabled() {
+		s.logger.Debug("Starting database log space usage metrics scraping")
+		scrapeCtx, cancel := context.WithTimeout(ctx, s.config.Timeout)
+		defer cancel()
+
+		if err := s.databaseScraper.ScrapeDatabaseLogSpaceUsageMetrics(scrapeCtx, scopeMetrics); err != nil {
+			s.logger.Error("Failed to scrape database log space usage metrics",
+				zap.Error(err),
+				zap.Duration("timeout", s.config.Timeout))
+			scrapeErrors = append(scrapeErrors, err)
+			// Don't return here - continue with other metrics
+		} else {
+			s.logger.Debug("Successfully scraped database log space usage metrics")
+		}
+	} else {
+		s.logger.Debug("Database log space usage metrics disabled in configuration")
+	}
+
 	// Scrape blocking session metrics if query monitoring is enabled
 	if s.config.EnableQueryMonitoring {
 		scrapeCtx, cancel := context.WithTimeout(ctx, s.config.Timeout)
@@ -385,7 +439,6 @@ func (s *sqlServerScraper) scrape(ctx context.Context) (pmetric.Metrics, error) 
 				zap.Int("text_truncate_limit", textTruncateLimit))
 		}
 	}
-
 
 	s.logger.Debug("Starting instance buffer pool hit percent metrics scraping")
 	scrapeCtx, cancel := context.WithTimeout(ctx, s.config.Timeout)

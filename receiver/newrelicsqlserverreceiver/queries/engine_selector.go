@@ -102,6 +102,7 @@ const (
 	FailoverClusterQueries
 	DatabasePrincipalsQueries
 	DatabaseRoleMembershipQueries
+	WaitTimeQueries // Add this new type
 )
 
 // QueryDefinition represents a SQL query with metadata
@@ -788,6 +789,33 @@ var databaseRoleMembershipQueriesAzureManagedInstance = []*QueryDefinition{
 	},
 }
 
+// Wait time query definitions for Default SQL Server
+var waitTimeQueriesDefault = []*QueryDefinition{
+	{
+		Query:       WaitTimeMetricsQuery,
+		MetricName:  "sqlserver.wait_stats.wait_time_metrics",
+		Description: "SQL Server wait statistics including wait types, wait times, and waiting task counts",
+	},
+}
+
+// Wait time query definitions for Azure SQL Database
+var waitTimeQueriesAzureManagedDatabase = []*QueryDefinition{
+	{
+		Query:       WaitTimeMetricsQuery,
+		MetricName:  "sqlserver.wait_stats.wait_time_metrics",
+		Description: "SQL Server wait statistics for Azure SQL Database",
+	},
+}
+
+// Wait time query definitions for Azure SQL Managed Instance
+var waitTimeQueriesAzureManagedInstance = []*QueryDefinition{
+	{
+		Query:       WaitTimeMetricsQuery,
+		MetricName:  "sqlserver.wait_stats.wait_time_metrics",
+		Description: "SQL Server wait statistics for Azure SQL Managed Instance",
+	},
+}
+
 // queryDefinitionSets maps query types to engine-specific query sets
 var queryDefinitionSets = map[QueryDefinitionType]EngineSet[[]*QueryDefinition]{
 	InstanceQueries: {
@@ -819,6 +847,11 @@ var queryDefinitionSets = map[QueryDefinitionType]EngineSet[[]*QueryDefinition]{
 		Default:                 databaseRoleMembershipQueriesDefault,
 		AzureSQLDatabase:        databaseRoleMembershipQueriesAzureDatabase,
 		AzureSQLManagedInstance: databaseRoleMembershipQueriesAzureManagedInstance,
+	},
+	WaitTimeQueries: {
+		Default:                 waitTimeQueriesDefault,
+		AzureSQLDatabase:        waitTimeQueriesAzureManagedDatabase,
+		AzureSQLManagedInstance: waitTimeQueriesAzureManagedInstance,
 	},
 }
 

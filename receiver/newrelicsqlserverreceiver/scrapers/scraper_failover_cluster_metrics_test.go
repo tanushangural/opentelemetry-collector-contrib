@@ -4,6 +4,7 @@
 package scrapers
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -231,18 +232,18 @@ func TestFailoverClusterScraper_CentralizedQuerySelection(t *testing.T) {
 			expectQuery:   queries.FailoverClusterReplicaQuery,
 		},
 		{
-			name:          "azure_sql_database_replica_query",
+			name:          "azure_sql_database_replica_query_fallback",
 			engineEdition: queries.AzureSQLDatabaseEngineEdition,
 			metricName:    "sqlserver.failover_cluster.replica_metrics",
-			expectFound:   true,
-			expectQuery:   queries.FailoverClusterReplicaQueryAzureSQL,
+			expectFound:   true,                                // Falls back to default Standard SQL Server query
+			expectQuery:   queries.FailoverClusterReplicaQuery, // Fallback query
 		},
 		{
 			name:          "azure_sql_managed_instance_replica_query",
 			engineEdition: queries.AzureSQLManagedInstanceEngineEdition,
 			metricName:    "sqlserver.failover_cluster.replica_metrics",
 			expectFound:   true,
-			expectQuery:   queries.FailoverClusterReplicaQueryAzureMI,
+			expectQuery:   queries.FailoverClusterReplicaQuery,
 		},
 		{
 			name:          "unknown_metric_name",
@@ -444,18 +445,18 @@ func TestFailoverClusterScraper_CentralizedQuerySelection_ReplicaState(t *testin
 			expectQuery:   queries.FailoverClusterReplicaStateQuery,
 		},
 		{
-			name:          "azure_sql_database_replica_state_query",
+			name:          "azure_sql_database_replica_state_query_fallback",
 			engineEdition: queries.AzureSQLDatabaseEngineEdition,
 			metricName:    "sqlserver.failover_cluster.replica_state_metrics",
-			expectFound:   true,
-			expectQuery:   queries.FailoverClusterReplicaStateQueryAzureSQL,
+			expectFound:   true,                                     // Falls back to default Standard SQL Server query
+			expectQuery:   queries.FailoverClusterReplicaStateQuery, // Fallback query
 		},
 		{
 			name:          "azure_sql_managed_instance_replica_state_query",
 			engineEdition: queries.AzureSQLManagedInstanceEngineEdition,
 			metricName:    "sqlserver.failover_cluster.replica_state_metrics",
 			expectFound:   true,
-			expectQuery:   queries.FailoverClusterReplicaStateQueryAzureMI,
+			expectQuery:   queries.FailoverClusterReplicaStateQuery, // Falls back to default Standard SQL Server query
 		},
 		{
 			name:          "unknown_metric_name",
@@ -478,4 +479,57 @@ func TestFailoverClusterScraper_CentralizedQuerySelection_ReplicaState(t *testin
 			}
 		})
 	}
+}
+
+func TestFailoverClusterScraper_AzureSQLDatabaseSkipping(t *testing.T) {
+	// Test that Azure SQL Database engine edition properly skips failover cluster metrics
+	// since Always On Availability Groups are not supported in Azure SQL Database
+	logger := zap.NewNop()
+	mockConn := &MockSQLConnection{}
+	scraper := NewFailoverClusterScraper(mockConn, logger, queries.AzureSQLDatabaseEngineEdition)
+
+	// Create a mock context and scope metrics
+	ctx := context.Background()
+	scopeMetrics := pmetric.NewScopeMetrics()
+
+	// Test that all failover cluster methods return nil for Azure SQL Database
+	err := scraper.ScrapeFailoverClusterMetrics(ctx, scopeMetrics)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, scopeMetrics.Metrics().Len(), "Azure SQL Database should not create any failover cluster metrics")
+
+	// Reset scope metrics for next test
+	scopeMetrics = pmetric.NewScopeMetrics()
+	err = scraper.ScrapeFailoverClusterReplicaStateMetrics(ctx, scopeMetrics)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, scopeMetrics.Metrics().Len(), "Azure SQL Database should not create any replica state metrics")
+
+	// Reset scope metrics for next test
+	scopeMetrics = pmetric.NewScopeMetrics()
+	err = scraper.ScrapeFailoverClusterNodeMetrics(ctx, scopeMetrics)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, scopeMetrics.Metrics().Len(), "Azure SQL Database should not create any node metrics")
+
+	// Reset scope metrics for next test
+	scopeMetrics = pmetric.NewScopeMetrics()
+	err = scraper.ScrapeFailoverClusterAvailabilityGroupHealthMetrics(ctx, scopeMetrics)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, scopeMetrics.Metrics().Len(), "Azure SQL Database should not create any AG health metrics")
+
+	// Reset scope metrics for next test
+	scopeMetrics = pmetric.NewScopeMetrics()
+	err = scraper.ScrapeFailoverClusterAvailabilityGroupMetrics(ctx, scopeMetrics)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, scopeMetrics.Metrics().Len(), "Azure SQL Database should not create any AG configuration metrics")
+
+	// Reset scope metrics for next test
+	scopeMetrics = pmetric.NewScopeMetrics()
+	err = scraper.ScrapeFailoverClusterPerformanceCounterMetrics(ctx, scopeMetrics)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, scopeMetrics.Metrics().Len(), "Azure SQL Database should not create any performance counter metrics")
+
+	// Reset scope metrics for next test
+	scopeMetrics = pmetric.NewScopeMetrics()
+	err = scraper.ScrapeFailoverClusterPerformanceCounterMetrics(ctx, scopeMetrics)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, scopeMetrics.Metrics().Len(), "Azure SQL Database should not create any performance counter metrics")
 }

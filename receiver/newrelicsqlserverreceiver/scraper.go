@@ -813,22 +813,22 @@ func (s *sqlServerScraper) scrape(ctx context.Context) (pmetric.Metrics, error) 
 		s.logger.Debug("Failover cluster performance counter metrics disabled in configuration")
 	}
 
-	// Scrape cluster properties metrics if enabled
-	if s.config.IsFailoverClusterClusterPropertiesMetricsEnabled() {
-		s.logger.Debug("Starting cluster properties metrics scraping")
+	// Scrape failover cluster redo queue metrics if enabled (Azure SQL Managed Instance only)
+	if s.config.IsFailoverClusterRedoQueueMetricsEnabled() {
+		s.logger.Debug("Starting failover cluster redo queue metrics scraping")
 		scrapeCtx, cancel = context.WithTimeout(ctx, s.config.Timeout)
 		defer cancel()
-		if err := s.failoverClusterScraper.ScrapeFailoverClusterClusterPropertiesMetrics(scrapeCtx, scopeMetrics); err != nil {
-			s.logger.Error("Failed to scrape cluster properties metrics",
+		if err := s.failoverClusterScraper.ScrapeFailoverClusterRedoQueueMetrics(scrapeCtx, scopeMetrics); err != nil {
+			s.logger.Error("Failed to scrape failover cluster redo queue metrics",
 				zap.Error(err),
 				zap.Duration("timeout", s.config.Timeout))
 			scrapeErrors = append(scrapeErrors, err)
 			// Don't return here - continue with other metrics
 		} else {
-			s.logger.Debug("Successfully scraped cluster properties metrics")
+			s.logger.Debug("Successfully scraped failover cluster redo queue metrics")
 		}
 	} else {
-		s.logger.Debug("Cluster properties metrics disabled in configuration")
+		s.logger.Debug("Failover cluster redo queue metrics disabled in configuration")
 	}
 
 	// Scrape database principals metrics if enabled (using granular toggles)

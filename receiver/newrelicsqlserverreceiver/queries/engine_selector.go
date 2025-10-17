@@ -215,9 +215,9 @@ var instanceQueriesAzureManagedDatabase = []*QueryDefinition{
 		Description: "Number of runnable tasks",
 	},
 	{
-		Query:       InstanceDiskMetricsQuery,
+		Query:       InstanceDiskMetricsQueryAzureSQL,
 		MetricName:  "sqlserver.instance.disk_metrics",
-		Description: "SQL Server instance disk metrics",
+		Description: "SQL Server instance disk metrics for Azure SQL Database",
 	},
 	{
 		Query:       InstanceActiveConnectionsMetricsQuery,
@@ -258,9 +258,9 @@ var instanceQueriesAzureManagedInstance = []*QueryDefinition{
 		Description: "Number of runnable tasks",
 	},
 	{
-		Query:       InstanceDiskMetricsQuery,
+		Query:       InstanceDiskMetricsQueryAzureMI,
 		MetricName:  "sqlserver.instance.disk_metrics",
-		Description: "SQL Server instance disk metrics",
+		Description: "SQL Server instance disk metrics for Azure SQL Managed Instance",
 	},
 	{
 		Query:       InstanceActiveConnectionsMetricsQuery,

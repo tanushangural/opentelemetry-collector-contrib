@@ -505,12 +505,6 @@ func TestFailoverClusterScraper_AzureSQLDatabaseSkipping(t *testing.T) {
 
 	// Reset scope metrics for next test
 	scopeMetrics = pmetric.NewScopeMetrics()
-	err = scraper.ScrapeFailoverClusterNodeMetrics(ctx, scopeMetrics)
-	assert.NoError(t, err)
-	assert.Equal(t, 0, scopeMetrics.Metrics().Len(), "Azure SQL Database should not create any node metrics")
-
-	// Reset scope metrics for next test
-	scopeMetrics = pmetric.NewScopeMetrics()
 	err = scraper.ScrapeFailoverClusterAvailabilityGroupHealthMetrics(ctx, scopeMetrics)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, scopeMetrics.Metrics().Len(), "Azure SQL Database should not create any AG health metrics")
@@ -523,13 +517,7 @@ func TestFailoverClusterScraper_AzureSQLDatabaseSkipping(t *testing.T) {
 
 	// Reset scope metrics for next test
 	scopeMetrics = pmetric.NewScopeMetrics()
-	err = scraper.ScrapeFailoverClusterPerformanceCounterMetrics(ctx, scopeMetrics)
+	err = scraper.ScrapeFailoverClusterRedoQueueMetrics(ctx, scopeMetrics)
 	assert.NoError(t, err)
-	assert.Equal(t, 0, scopeMetrics.Metrics().Len(), "Azure SQL Database should not create any performance counter metrics")
-
-	// Reset scope metrics for next test
-	scopeMetrics = pmetric.NewScopeMetrics()
-	err = scraper.ScrapeFailoverClusterPerformanceCounterMetrics(ctx, scopeMetrics)
-	assert.NoError(t, err)
-	assert.Equal(t, 0, scopeMetrics.Metrics().Len(), "Azure SQL Database should not create any performance counter metrics")
+	assert.Equal(t, 0, scopeMetrics.Metrics().Len(), "Azure SQL Database should not create any redo queue metrics")
 }

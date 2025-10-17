@@ -138,24 +138,6 @@ type FailoverClusterReplicaStateMetrics struct {
 	SuspendReasonDesc *string `db:"suspend_reason_desc" metric_name:"sqlserver.failover_cluster.suspend_reason" source_type:"info"`
 }
 
-// FailoverClusterNodeMetrics represents cluster node information and status
-// This model captures the server node details in a Windows Server Failover Cluster
-type FailoverClusterNodeMetrics struct {
-	// NodeName represents the name of the server node in the cluster
-	// Query source: sys.dm_os_cluster_nodes.nodename
-	NodeName string `db:"nodename" source_type:"attribute"`
-
-	// StatusDescription represents the health state of the cluster node
-	// Query source: sys.dm_os_cluster_nodes.status_description
-	// Expected values: "Up", "Down", "Paused", etc.
-	StatusDescription string `db:"status_description" metric_name:"sqlserver.failover_cluster.node_status" source_type:"info"`
-
-	// IsCurrentOwner indicates if this is the active node currently running the SQL Server instance
-	// Query source: sys.dm_os_cluster_nodes.is_current_owner
-	// Value: 1 = active node, 0 = passive node
-	IsCurrentOwner *int64 `db:"is_current_owner" metric_name:"sqlserver.failover_cluster.node_is_current_owner" source_type:"gauge"`
-}
-
 // FailoverClusterAvailabilityGroupHealthMetrics represents Always On Availability Group health status
 // This model captures the health and role information for availability group replicas
 type FailoverClusterAvailabilityGroupHealthMetrics struct {
@@ -245,29 +227,9 @@ type FailoverClusterAvailabilityGroupMetrics struct {
 	RequiredSynchronizedSecondariesToCommit *int64 `db:"required_synchronized_secondaries_to_commit" metric_name:"sqlserver.failover_cluster.required_sync_secondaries" source_type:"gauge"`
 }
 
-// FailoverClusterPerformanceCounterMetrics represents core Always On performance counter metrics
-// This model captures essential performance counters for monitoring replica performance using a PIVOT structure
-// Simplified to focus on the 3 most critical performance indicators for consistency with replica metrics
-type FailoverClusterPerformanceCounterMetrics struct {
-	// InstanceName represents the instance name for the performance counter (database name or _Total)
-	// Query source: sys.dm_os_performance_counters.instance_name
-	InstanceName string `db:"instance_name" source_type:"attribute"`
-
-	// LogBytesReceivedSec represents the rate of log records received by secondary replica from primary replica
-	// Query source: sys.dm_os_performance_counters where counter_name = 'Log Bytes Received/sec'
-	LogBytesReceivedSec *int64 `db:"Log Bytes Received/sec" metric_name:"sqlserver.failover_cluster.log_bytes_received_per_sec" source_type:"gauge"`
-
-	// TransactionDelay represents the average delay for transactions on the secondary replica
-	// Query source: sys.dm_os_performance_counters where counter_name = 'Transaction Delay'
-	TransactionDelay *int64 `db:"Transaction Delay" metric_name:"sqlserver.failover_cluster.transaction_delay_ms" source_type:"gauge"`
-
-	// FlowControlTimeMs represents time spent in flow control by log records from primary replica
-	// Query source: sys.dm_os_performance_counters where counter_name = 'Flow Control Time (ms/sec)'
-	FlowControlTimeMs *int64 `db:"Flow Control Time (ms/sec)" metric_name:"sqlserver.failover_cluster.flow_control_time_ms" source_type:"gauge"`
-}
-
-// FailoverClusterRedoQueueMetrics represents Always On redo queue metrics specific to Azure SQL Managed Instance
+// FailoverClusterRedoQueueMetrics represents Always On redo queue metrics
 // This model captures log send queue, redo queue, and redo rate metrics for monitoring replication performance
+// Compatible with both Standard SQL Server and Azure SQL Managed Instance
 type FailoverClusterRedoQueueMetrics struct {
 	// ReplicaServerName represents the name of the server hosting the replica
 	// Query source: sys.availability_replicas.replica_server_name joined with sys.dm_hadr_database_replica_states

@@ -9,6 +9,7 @@
 //
 //	type EngineSet[T any] struct {
 //	    Default                 T  // Standard SQL Server queries
+//	    AzureSQLDatabase        T  // Azure SQL //	    Default                 T  // Standard SQL Server queries
 //	    AzureSQLDatabase        T  // Azure SQL Database specific queries
 //	    AzureSQLManagedInstance T  // Azure SQL Managed Instance specific queries
 //	}
@@ -540,11 +541,7 @@ var failoverClusterQueriesDefault = []*QueryDefinition{
 		MetricName:  "sqlserver.failover_cluster.replica_state_metrics",
 		Description: "Always On Availability Group database replica state metrics",
 	},
-	{
-		Query:       FailoverClusterNodeQuery,
-		MetricName:  "sqlserver.failover_cluster.node_metrics",
-		Description: "Windows Server Failover Cluster node information and status",
-	},
+
 	{
 		Query:       FailoverClusterAvailabilityGroupHealthQuery,
 		MetricName:  "sqlserver.failover_cluster.availability_group_health_metrics",
@@ -556,9 +553,9 @@ var failoverClusterQueriesDefault = []*QueryDefinition{
 		Description: "Always On Availability Group configuration metrics",
 	},
 	{
-		Query:       FailoverClusterPerformanceCounterQuery,
-		MetricName:  "sqlserver.failover_cluster.performance_counter_metrics",
-		Description: "Always On Availability Group performance counter metrics",
+		Query:       FailoverClusterRedoQueueQuery,
+		MetricName:  "sqlserver.failover_cluster.redo_queue_metrics",
+		Description: "Always On Availability Group redo queue metrics",
 	},
 }
 
@@ -574,22 +571,32 @@ var failoverClusterQueriesAzureManagedInstance = []*QueryDefinition{
 	{
 		Query:       FailoverClusterReplicaQuery,
 		MetricName:  "sqlserver.failover_cluster.replica_metrics",
-		Description: "Always On Availability Group replica performance metrics (Azure SQL Managed Instance)",
+		Description: "Always On Availability Group replica performance metrics",
 	},
 	{
-		Query:       FailoverClusterAvailabilityGroupQueryAzureMI,
+		Query:       FailoverClusterReplicaStateQuery,
+		MetricName:  "sqlserver.failover_cluster.replica_state_metrics",
+		Description: "Always On Availability Group database replica state metrics",
+	},
+	{
+		Query:       FailoverClusterAvailabilityGroupHealthQuery,
+		MetricName:  "sqlserver.failover_cluster.availability_group_health_metrics",
+		Description: "Always On Availability Group health status metrics",
+	},
+	{
+		Query:       FailoverClusterAvailabilityGroupQuery,
 		MetricName:  "sqlserver.failover_cluster.availability_group_metrics",
-		Description: "Availability Group configuration metrics (Azure SQL Managed Instance)",
+		Description: "Always On Availability Group configuration metrics",
 	},
 	{
-		Query:       FailoverClusterPerformanceCounterQuery,
-		MetricName:  "sqlserver.failover_cluster.performance_counter_metrics",
-		Description: "Always On Availability Group core performance counter metrics (Azure SQL Managed Instance - simplified 3 metrics)",
-	},
-	{
-		Query:       FailoverClusterRedoQueueQueryAzureMI,
+		Query:       FailoverClusterRedoQueueQuery,
 		MetricName:  "sqlserver.failover_cluster.redo_queue_metrics",
-		Description: "Always On Availability Group redo queue metrics (Azure SQL Managed Instance only)",
+		Description: "Always On Availability Group redo queue metrics",
+	},
+	{
+		Query:       FailoverClusterRedoQueueQuery,
+		MetricName:  "sqlserver.failover_cluster.redo_queue_metrics",
+		Description: "Always On Availability Group redo queue metrics",
 	},
 }
 

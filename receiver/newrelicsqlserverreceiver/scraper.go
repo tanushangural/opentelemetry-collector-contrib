@@ -741,24 +741,6 @@ func (s *sqlServerScraper) scrape(ctx context.Context) (pmetric.Metrics, error) 
 		s.logger.Debug("Failover cluster replica state metrics disabled in configuration")
 	}
 
-	// Scrape failover cluster node metrics if enabled
-	if s.config.IsFailoverClusterNodeMetricsEnabled() {
-		s.logger.Debug("Starting failover cluster node metrics scraping")
-		scrapeCtx, cancel = context.WithTimeout(ctx, s.config.Timeout)
-		defer cancel()
-		if err := s.failoverClusterScraper.ScrapeFailoverClusterNodeMetrics(scrapeCtx, scopeMetrics); err != nil {
-			s.logger.Error("Failed to scrape failover cluster node metrics",
-				zap.Error(err),
-				zap.Duration("timeout", s.config.Timeout))
-			scrapeErrors = append(scrapeErrors, err)
-			// Don't return here - continue with other metrics
-		} else {
-			s.logger.Debug("Successfully scraped failover cluster node metrics")
-		}
-	} else {
-		s.logger.Debug("Failover cluster node metrics disabled in configuration")
-	}
-
 	// Scrape availability group health metrics if enabled
 	if s.config.IsFailoverClusterAvailabilityGroupHealthMetricsEnabled() {
 		s.logger.Debug("Starting availability group health metrics scraping")
@@ -793,24 +775,6 @@ func (s *sqlServerScraper) scrape(ctx context.Context) (pmetric.Metrics, error) 
 		}
 	} else {
 		s.logger.Debug("Availability group configuration metrics disabled in configuration")
-	}
-
-	// Scrape failover cluster performance counter metrics if enabled
-	if s.config.IsFailoverClusterPerformanceCounterMetricsEnabled() {
-		s.logger.Debug("Starting failover cluster performance counter metrics scraping")
-		scrapeCtx, cancel = context.WithTimeout(ctx, s.config.Timeout)
-		defer cancel()
-		if err := s.failoverClusterScraper.ScrapeFailoverClusterPerformanceCounterMetrics(scrapeCtx, scopeMetrics); err != nil {
-			s.logger.Error("Failed to scrape failover cluster performance counter metrics",
-				zap.Error(err),
-				zap.Duration("timeout", s.config.Timeout))
-			scrapeErrors = append(scrapeErrors, err)
-			// Don't return here - continue with other metrics
-		} else {
-			s.logger.Debug("Successfully scraped failover cluster performance counter metrics")
-		}
-	} else {
-		s.logger.Debug("Failover cluster performance counter metrics disabled in configuration")
 	}
 
 	// Scrape failover cluster redo queue metrics if enabled (Azure SQL Managed Instance only)

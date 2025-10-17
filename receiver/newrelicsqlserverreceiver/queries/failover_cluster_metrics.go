@@ -84,35 +84,22 @@ const FailoverClusterReplicaStateQuery = `SELECT
     drs.log_send_queue_size AS log_send_queue_kb,
     drs.redo_queue_size AS redo_queue_kb,
     drs.redo_rate AS redo_rate_kb_sec,
-    drs.database_state_desc,
-    drs.synchronization_state_desc,
+    ISNULL(drs.database_state_desc, 'UNKNOWN') AS database_state_desc,
+    ISNULL(drs.synchronization_state_desc, 'UNKNOWN') AS synchronization_state_desc,
     CAST(drs.is_local AS INT) AS is_local,
     CAST(drs.is_primary_replica AS INT) AS is_primary_replica,
-    CONVERT(VARCHAR(23), drs.last_commit_time, 121) AS last_commit_time,
-    CONVERT(VARCHAR(23), drs.last_sent_time, 121) AS last_sent_time,
-    CONVERT(VARCHAR(23), drs.last_received_time, 121) AS last_received_time,
-    CONVERT(VARCHAR(23), drs.last_hardened_time, 121) AS last_hardened_time,
-    CONVERT(VARCHAR(25), drs.last_redone_lsn) AS last_redone_lsn,
-    drs.suspend_reason_desc
+    ISNULL(CONVERT(VARCHAR(23), drs.last_commit_time, 121), '') AS last_commit_time,
+    ISNULL(CONVERT(VARCHAR(23), drs.last_sent_time, 121), '') AS last_sent_time,
+    ISNULL(CONVERT(VARCHAR(23), drs.last_received_time, 121), '') AS last_received_time,
+    ISNULL(CONVERT(VARCHAR(23), drs.last_hardened_time, 121), '') AS last_hardened_time,
+    ISNULL(CONVERT(VARCHAR(25), drs.last_redone_lsn), '') AS last_redone_lsn,
+    ISNULL(drs.suspend_reason_desc, 'NONE') AS suspend_reason_desc
 FROM
     sys.dm_hadr_database_replica_states AS drs
 JOIN
     sys.availability_replicas AS ar ON drs.replica_id = ar.replica_id
 JOIN
     sys.databases AS d ON drs.database_id = d.database_id;`
-
-// FailoverClusterNodeQuery returns the SQL query for cluster node information
-// This query retrieves information about cluster nodes including their status and ownership
-//
-// The query returns:
-// - nodename: Name of the server node in the cluster
-// - status_description: Health state of the node (Up, Down, Paused, etc.)
-// - is_current_owner: 1 if this is the active node running SQL Server, 0 if passive
-const FailoverClusterNodeQuery = `SELECT
-    nodename,
-    status_description,
-    is_current_owner
-FROM sys.dm_os_cluster_nodes;`
 
 // FailoverClusterAvailabilityGroupHealthQuery returns the SQL query for Availability Group health status with extended configuration
 // This query retrieves health, role, and configuration information for all availability group replicas
@@ -130,36 +117,17 @@ FROM sys.dm_os_cluster_nodes;`
 // - operational_state_desc: Operational state (ONLINE, OFFLINE, etc.)
 // - recovery_health_desc: Recovery health (ONLINE, OFFLINE, etc.)
 const FailoverClusterAvailabilityGroupHealthQuery = `SELECT
-    ar.replica_server_name,
-    ars.role_desc,
-    ars.synchronization_health_desc,
-    ar.availability_mode_desc,
-    ar.failover_mode_desc,
-    ar.backup_priority,
-    ar.endpoint_url,
-    ar.read_only_routing_url,
-    ars.connected_state_desc,
-    ars.operational_state_desc,
-    ars.recovery_health_desc
-FROM
-    sys.dm_hadr_availability_replica_states AS ars
-INNER JOIN
-    sys.availability_replicas AS ar ON ars.replica_id = ar.replica_id;`
-
-// FailoverClusterAvailabilityGroupHealthQueryAzureMI returns the extended query for Azure SQL Managed Instance
-// Azure SQL Managed Instance supports Always On AG and should have access to these DMVs
-const FailoverClusterAvailabilityGroupHealthQueryAzureMI = `SELECT
-    ar.replica_server_name,
-    ars.role_desc,
-    ars.synchronization_health_desc,
-    ar.availability_mode_desc,
-    ar.failover_mode_desc,
-    ar.backup_priority,
-    ar.endpoint_url,
-    ar.read_only_routing_url,
-    ars.connected_state_desc,
-    ars.operational_state_desc,
-    ars.recovery_health_desc
+    ISNULL(ar.replica_server_name, 'UNKNOWN') AS replica_server_name,
+    ISNULL(ars.role_desc, 'UNKNOWN') AS role_desc,
+    ISNULL(ars.synchronization_health_desc, 'UNKNOWN') AS synchronization_health_desc,
+    ISNULL(ar.availability_mode_desc, 'UNKNOWN') AS availability_mode_desc,
+    ISNULL(ar.failover_mode_desc, 'UNKNOWN') AS failover_mode_desc,
+    ISNULL(ar.backup_priority, 0) AS backup_priority,
+    ISNULL(ar.endpoint_url, '') AS endpoint_url,
+    ISNULL(ar.read_only_routing_url, '') AS read_only_routing_url,
+    ISNULL(ars.connected_state_desc, 'UNKNOWN') AS connected_state_desc,
+    ISNULL(ars.operational_state_desc, 'UNKNOWN') AS operational_state_desc,
+    ISNULL(ars.recovery_health_desc, 'UNKNOWN') AS recovery_health_desc
 FROM
     sys.dm_hadr_availability_replica_states AS ars
 INNER JOIN
@@ -176,30 +144,19 @@ INNER JOIN
 // - cluster_type_desc: Cluster type (WSFC, EXTERNAL, NONE)
 // - required_synchronized_secondaries_to_commit: Number of secondary replicas required to be synchronized
 const FailoverClusterAvailabilityGroupQuery = `SELECT
-    ag.name AS group_name,
-    ag.automated_backup_preference_desc,
-    ag.failure_condition_level,
-    ag.health_check_timeout,
-    ag.cluster_type_desc,
-    ag.required_synchronized_secondaries_to_commit
+    ISNULL(ag.name, 'UNKNOWN') AS group_name,
+    ISNULL(ag.automated_backup_preference_desc, 'UNKNOWN') AS automated_backup_preference_desc,
+    ISNULL(ag.failure_condition_level, 0) AS failure_condition_level,
+    ISNULL(ag.health_check_timeout, 0) AS health_check_timeout,
+    ISNULL(ag.cluster_type_desc, 'UNKNOWN') AS cluster_type_desc,
+    ISNULL(ag.required_synchronized_secondaries_to_commit, 0) AS required_synchronized_secondaries_to_commit
 FROM
     sys.availability_groups AS ag;`
 
-// FailoverClusterAvailabilityGroupQueryAzureMI returns the same query for Azure SQL Managed Instance
-// Azure SQL Managed Instance supports Always On AG and should have access to these DMVs
-const FailoverClusterAvailabilityGroupQueryAzureMI = `SELECT
-    ag.name AS group_name,
-    ag.automated_backup_preference_desc,
-    ag.failure_condition_level,
-    ag.health_check_timeout,
-    ag.cluster_type_desc,
-    ag.required_synchronized_secondaries_to_commit
-FROM
-    sys.availability_groups AS ag;`
-
-// FailoverClusterRedoQueueQueryAzureMI returns the SQL query for Always On redo queue metrics
-// This query is specifically for Azure SQL Managed Instance and retrieves log send/redo queue information
-// for monitoring replication lag and redo performance in availability groups
+// FailoverClusterRedoQueueQuery returns the SQL query for Always On redo queue metrics
+// This query retrieves log send/redo queue information for monitoring replication lag
+// and redo performance in availability groups. Compatible with both Standard SQL Server
+// and Azure SQL Managed Instance.
 //
 // The query returns:
 // - replica_server_name: Name of the server hosting the replica
@@ -207,7 +164,7 @@ FROM
 // - log_send_queue_kb: Amount of log records not yet sent to secondary replica (KB)
 // - redo_queue_kb: Amount of log records waiting to be redone on secondary replica (KB)
 // - redo_rate_kb_sec: Rate at which log records are being redone on secondary replica (KB/sec)
-const FailoverClusterRedoQueueQueryAzureMI = `SELECT
+const FailoverClusterRedoQueueQuery = `SELECT
     ar.replica_server_name,
     d.name AS database_name,
     drs.log_send_queue_size AS log_send_queue_kb,
@@ -219,29 +176,3 @@ JOIN
     sys.availability_replicas AS ar ON drs.replica_id = ar.replica_id
 JOIN
     sys.databases AS d ON drs.database_id = d.database_id;`
-
-// FailoverClusterPerformanceCounterQuery returns the SQL query for core Always On performance counters
-// This query retrieves the essential performance counters for monitoring replica performance
-// using PIVOT operation to transform rows into columns for easier consumption
-//
-// The query returns columns for each performance counter by database instance:
-// - instance_name: Database name or _Total for aggregate counters
-// - Log Bytes Received/sec: Rate of log records received by secondary replica from primary (bytes/sec)
-// - Transaction Delay: Average delay for transactions on the secondary replica (milliseconds)
-// - Flow Control Time (ms/sec): Time spent in flow control by log records (milliseconds/sec)
-const FailoverClusterPerformanceCounterQuery = `SELECT
-    instance_name,
-    ISNULL(MAX(CASE WHEN counter_name = 'Log Bytes Received/sec' THEN cntr_value END), 0) AS [Log Bytes Received/sec],
-    ISNULL(MAX(CASE WHEN counter_name = 'Transaction Delay' THEN cntr_value END), 0) AS [Transaction Delay],
-    ISNULL(MAX(CASE WHEN counter_name = 'Flow Control Time (ms/sec)' THEN cntr_value END), 0) AS [Flow Control Time (ms/sec)]
-FROM
-    sys.dm_os_performance_counters
-WHERE
-    object_name LIKE '%Database Replica%'
-    AND counter_name IN (
-        'Log Bytes Received/sec',
-        'Transaction Delay',
-        'Flow Control Time (ms/sec)'
-    )
-GROUP BY
-    instance_name;`

@@ -113,10 +113,8 @@ func TestGranularFailoverClusterToggles(t *testing.T) {
 				EnableFailoverClusterMetrics:                        tt.mainToggle,
 				EnableFailoverClusterReplicaMetrics:                 tt.granularToggles["replica"],
 				EnableFailoverClusterReplicaStateMetrics:            tt.granularToggles["replica_state"],
-				EnableFailoverClusterNodeMetrics:                    tt.granularToggles["node"],
 				EnableFailoverClusterAvailabilityGroupHealthMetrics: tt.granularToggles["ag_health"],
 				EnableFailoverClusterAvailabilityGroupMetrics:       tt.granularToggles["ag_config"],
-				EnableFailoverClusterPerformanceCounterMetrics:      tt.granularToggles["performance_counter"],
 				EnableFailoverClusterRedoQueueMetrics:               tt.granularToggles["redo_queue"],
 			}
 
@@ -127,17 +125,11 @@ func TestGranularFailoverClusterToggles(t *testing.T) {
 			assert.Equal(t, tt.expectedResults["replica_state"], config.IsFailoverClusterReplicaStateMetricsEnabled(),
 				"Replica state metrics enabled check failed for test: %s", tt.description)
 
-			assert.Equal(t, tt.expectedResults["node"], config.IsFailoverClusterNodeMetricsEnabled(),
-				"Node metrics enabled check failed for test: %s", tt.description)
-
 			assert.Equal(t, tt.expectedResults["ag_health"], config.IsFailoverClusterAvailabilityGroupHealthMetricsEnabled(),
 				"AG health metrics enabled check failed for test: %s", tt.description)
 
 			assert.Equal(t, tt.expectedResults["ag_config"], config.IsFailoverClusterAvailabilityGroupMetricsEnabled(),
 				"AG config metrics enabled check failed for test: %s", tt.description)
-
-			assert.Equal(t, tt.expectedResults["performance_counter"], config.IsFailoverClusterPerformanceCounterMetricsEnabled(),
-				"Performance counter metrics enabled check failed for test: %s", tt.description)
 
 			// Add redo queue metrics test (only for Azure SQL Managed Instance)
 			if redoQueueExpected, exists := tt.expectedResults["redo_queue"]; exists {
@@ -158,19 +150,15 @@ func TestGranularToggleDefaults(t *testing.T) {
 	// All granular toggles should default to false
 	assert.False(t, config.EnableFailoverClusterReplicaMetrics, "Replica metrics toggle should default to false")
 	assert.False(t, config.EnableFailoverClusterReplicaStateMetrics, "Replica state metrics toggle should default to false")
-	assert.False(t, config.EnableFailoverClusterNodeMetrics, "Node metrics toggle should default to false")
 	assert.False(t, config.EnableFailoverClusterAvailabilityGroupHealthMetrics, "AG health metrics toggle should default to false")
 	assert.False(t, config.EnableFailoverClusterAvailabilityGroupMetrics, "AG config metrics toggle should default to false")
-	assert.False(t, config.EnableFailoverClusterPerformanceCounterMetrics, "Performance counter metrics toggle should default to false")
 	assert.False(t, config.EnableFailoverClusterRedoQueueMetrics, "Redo queue metrics toggle should default to false")
 
 	// With all defaults (false), helper methods should return false
 	assert.False(t, config.IsFailoverClusterReplicaMetricsEnabled(), "Replica metrics should be disabled by default")
 	assert.False(t, config.IsFailoverClusterReplicaStateMetricsEnabled(), "Replica state metrics should be disabled by default")
-	assert.False(t, config.IsFailoverClusterNodeMetricsEnabled(), "Node metrics should be disabled by default")
 	assert.False(t, config.IsFailoverClusterAvailabilityGroupHealthMetricsEnabled(), "AG health metrics should be disabled by default")
 	assert.False(t, config.IsFailoverClusterAvailabilityGroupMetricsEnabled(), "AG config metrics should be disabled by default")
-	assert.False(t, config.IsFailoverClusterPerformanceCounterMetricsEnabled(), "Performance counter metrics should be disabled by default")
 	assert.False(t, config.IsFailoverClusterRedoQueueMetricsEnabled(), "Redo queue metrics should be disabled by default")
 }
 
@@ -432,10 +420,8 @@ func TestProductionUseCaseScenarios(t *testing.T) {
 		// All metrics should be enabled when main toggle is true
 		assert.True(t, config.IsFailoverClusterReplicaMetricsEnabled())
 		assert.True(t, config.IsFailoverClusterReplicaStateMetricsEnabled())
-		assert.True(t, config.IsFailoverClusterNodeMetricsEnabled())
 		assert.True(t, config.IsFailoverClusterAvailabilityGroupHealthMetricsEnabled())
 		assert.True(t, config.IsFailoverClusterAvailabilityGroupMetricsEnabled())
-		assert.True(t, config.IsFailoverClusterPerformanceCounterMetricsEnabled())
 	})
 
 	t.Run("production_critical_only", func(t *testing.T) {
@@ -445,8 +431,6 @@ func TestProductionUseCaseScenarios(t *testing.T) {
 			EnableFailoverClusterReplicaStateMetrics:            true,  // Critical
 			EnableFailoverClusterAvailabilityGroupHealthMetrics: true,  // Critical
 			EnableFailoverClusterAvailabilityGroupMetrics:       true,  // Important
-			EnableFailoverClusterNodeMetrics:                    true,  // Important
-			EnableFailoverClusterPerformanceCounterMetrics:      false, // Optional
 		}
 
 		// Critical metrics enabled
@@ -454,10 +438,6 @@ func TestProductionUseCaseScenarios(t *testing.T) {
 		assert.True(t, config.IsFailoverClusterReplicaStateMetricsEnabled())
 		assert.True(t, config.IsFailoverClusterAvailabilityGroupHealthMetricsEnabled())
 		assert.True(t, config.IsFailoverClusterAvailabilityGroupMetricsEnabled())
-		assert.True(t, config.IsFailoverClusterNodeMetricsEnabled())
-
-		// Optional metrics disabled
-		assert.False(t, config.IsFailoverClusterPerformanceCounterMetricsEnabled())
 	})
 
 	t.Run("development_lightweight", func(t *testing.T) {
@@ -468,10 +448,8 @@ func TestProductionUseCaseScenarios(t *testing.T) {
 		// All metrics should be disabled for lightweight development monitoring
 		assert.False(t, config.IsFailoverClusterReplicaMetricsEnabled())
 		assert.False(t, config.IsFailoverClusterReplicaStateMetricsEnabled())
-		assert.False(t, config.IsFailoverClusterNodeMetricsEnabled())
 		assert.False(t, config.IsFailoverClusterAvailabilityGroupHealthMetricsEnabled())
 		assert.False(t, config.IsFailoverClusterAvailabilityGroupMetricsEnabled())
-		assert.False(t, config.IsFailoverClusterPerformanceCounterMetricsEnabled())
 	})
 
 	t.Run("single_metric_debugging", func(t *testing.T) {
@@ -485,9 +463,7 @@ func TestProductionUseCaseScenarios(t *testing.T) {
 
 		// All others disabled
 		assert.False(t, config.IsFailoverClusterReplicaStateMetricsEnabled())
-		assert.False(t, config.IsFailoverClusterNodeMetricsEnabled())
 		assert.False(t, config.IsFailoverClusterAvailabilityGroupHealthMetricsEnabled())
 		assert.False(t, config.IsFailoverClusterAvailabilityGroupMetricsEnabled())
-		assert.False(t, config.IsFailoverClusterPerformanceCounterMetricsEnabled())
 	})
 }

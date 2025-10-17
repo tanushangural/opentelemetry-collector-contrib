@@ -267,13 +267,9 @@ type FailoverClusterPerformanceCounterMetrics struct {
 }
 
 // FailoverClusterRedoQueueMetrics represents Always On redo queue metrics specific to Azure SQL Managed Instance
-// This model captures log send queue, redo queue, and redo rate metrics for monitoring replication performance
+// This model captures log send queue, redo queue, and comprehensive synchronization metrics from dm_hadr_database_replica_states
 type FailoverClusterRedoQueueMetrics struct {
-	// ReplicaServerName represents the name of the server hosting the replica
-	// Query source: sys.availability_replicas.replica_server_name joined with sys.dm_hadr_database_replica_states
-	ReplicaServerName string `db:"replica_server_name" source_type:"attribute"`
-
-	// DatabaseName represents the name of the database in the availability group
+	// DatabaseName represents the name of the database in the replica
 	// Query source: sys.databases.name joined with sys.dm_hadr_database_replica_states
 	DatabaseName string `db:"database_name" source_type:"attribute"`
 
@@ -288,4 +284,85 @@ type FailoverClusterRedoQueueMetrics struct {
 	// RedoRateKBSec represents the rate at which log records are being redone on secondary replica (KB/sec)
 	// Query source: sys.dm_hadr_database_replica_states.redo_rate
 	RedoRateKBSec *int64 `db:"redo_rate_kb_sec" metric_name:"sqlserver.failover_cluster.redo_rate_kb_sec" source_type:"gauge"`
+
+	// SynchronizationStateDesc represents the synchronization state of the database replica
+	// Query source: sys.dm_hadr_database_replica_states.synchronization_state_desc
+	// Expected values: "SYNCHRONIZING", "SYNCHRONIZED", "NOT SYNCHRONIZING", "REVERTING", "INITIALIZING"
+	SynchronizationStateDesc string `db:"synchronization_state_desc" metric_name:"sqlserver.failover_cluster.synchronization_state_desc" source_type:"info"`
+
+	// SynchronizationState represents the numeric synchronization state
+	// Query source: sys.dm_hadr_database_replica_states.synchronization_state
+	SynchronizationState *int64 `db:"synchronization_state" metric_name:"sqlserver.failover_cluster.synchronization_state" source_type:"gauge"`
+
+	// IsPrimaryReplica indicates whether this is the primary replica (1) or secondary (0)
+	// Query source: sys.dm_hadr_database_replica_states.is_primary_replica (CAST as int)
+	IsPrimaryReplica *int64 `db:"is_primary_replica" metric_name:"sqlserver.failover_cluster.is_primary_replica" source_type:"gauge"`
+
+	// LastCommitTime represents the timestamp of the last transaction commit
+	// Query source: sys.dm_hadr_database_replica_states.last_commit_time
+	LastCommitTime *string `db:"last_commit_time" metric_name:"sqlserver.failover_cluster.last_commit_time" source_type:"info"`
+
+	// LastHardenedTime represents the timestamp when the last log block was hardened
+	// Query source: sys.dm_hadr_database_replica_states.last_hardened_time
+	LastHardenedTime *string `db:"last_hardened_time" metric_name:"sqlserver.failover_cluster.last_hardened_time" source_type:"info"`
+
+	// DatabaseStateDesc represents the current state of the database replica
+	// Query source: sys.dm_hadr_database_replica_states.database_state_desc
+	DatabaseStateDesc string `db:"database_state_desc" metric_name:"sqlserver.failover_cluster.database_state_desc" source_type:"info"`
+
+	// IsLocal indicates whether this is a local replica (1) or remote (0)
+	// Query source: sys.dm_hadr_database_replica_states.is_local (CAST as int)
+	IsLocal *int64 `db:"is_local" metric_name:"sqlserver.failover_cluster.is_local_replica" source_type:"gauge"`
+}
+
+// FailoverClusterAvailabilityGroupAzureMIMetrics represents enhanced availability group health metrics for Azure SQL Managed Instance
+// This model captures comprehensive health data from dm_hadr_database_replica_states joined with availability_replicas
+type FailoverClusterAvailabilityGroupAzureMIMetrics struct {
+	// ReplicaServerName represents the name of the server hosting the replica
+	// Query source: sys.availability_replicas.replica_server_name or @@SERVERNAME as fallback
+	ReplicaServerName string `db:"replica_server_name" source_type:"attribute"`
+
+	// DatabaseName represents the name of the database
+	// Query source: sys.databases.name
+	DatabaseName string `db:"database_name" source_type:"attribute"`
+
+	// SynchronizationHealthDesc represents the health of synchronization between replicas
+	// Query source: sys.dm_hadr_database_replica_states.synchronization_health_desc
+	SynchronizationHealthDesc string `db:"synchronization_health_desc" metric_name:"sqlserver.failover_cluster.synchronization_health" source_type:"info"`
+
+	// SynchronizationStateDesc represents the synchronization state of the database replica
+	// Query source: sys.dm_hadr_database_replica_states.synchronization_state_desc
+	SynchronizationStateDesc string `db:"synchronization_state_desc" metric_name:"sqlserver.failover_cluster.synchronization_state_desc" source_type:"info"`
+
+	// SynchronizationState represents the numeric synchronization state
+	// Query source: sys.dm_hadr_database_replica_states.synchronization_state
+	SynchronizationState *int64 `db:"synchronization_state" metric_name:"sqlserver.failover_cluster.synchronization_state" source_type:"gauge"`
+
+	// IsPrimaryReplica indicates whether this is the primary replica (1) or secondary (0)
+	// Query source: sys.dm_hadr_database_replica_states.is_primary_replica (CAST as int)
+	IsPrimaryReplica *int64 `db:"is_primary_replica" metric_name:"sqlserver.failover_cluster.is_primary_replica" source_type:"gauge"`
+
+	// LastCommitTime represents the timestamp of the last transaction commit
+	// Query source: sys.dm_hadr_database_replica_states.last_commit_time
+	LastCommitTime *string `db:"last_commit_time" metric_name:"sqlserver.failover_cluster.last_commit_time" source_type:"info"`
+
+	// AvailabilityModeDesc represents the availability mode of the replica
+	// Query source: sys.availability_replicas.availability_mode_desc with fallback to 'UNKNOWN'
+	AvailabilityModeDesc string `db:"availability_mode_desc" metric_name:"sqlserver.failover_cluster.availability_mode" source_type:"info"`
+
+	// FailoverModeDesc represents the failover mode of the replica
+	// Query source: sys.availability_replicas.failover_mode_desc with fallback to 'UNKNOWN'
+	FailoverModeDesc string `db:"failover_mode_desc" metric_name:"sqlserver.failover_cluster.failover_mode" source_type:"info"`
+
+	// BackupPriority represents the backup priority setting for this replica
+	// Query source: sys.availability_replicas.backup_priority with fallback to 50
+	BackupPriority *int64 `db:"backup_priority" metric_name:"sqlserver.failover_cluster.backup_priority" source_type:"gauge"`
+
+	// DatabaseStateDesc represents the current state of the database replica
+	// Query source: sys.dm_hadr_database_replica_states.database_state_desc
+	DatabaseStateDesc string `db:"database_state_desc" metric_name:"sqlserver.failover_cluster.database_state_desc" source_type:"info"`
+
+	// IsLocal indicates whether this is a local replica (1) or remote (0)
+	// Query source: sys.dm_hadr_database_replica_states.is_local (CAST as int)
+	IsLocal *int64 `db:"is_local" metric_name:"sqlserver.failover_cluster.is_local_replica" source_type:"gauge"`
 }

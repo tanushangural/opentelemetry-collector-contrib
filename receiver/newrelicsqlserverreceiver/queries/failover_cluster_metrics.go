@@ -146,24 +146,30 @@ FROM
 INNER JOIN
     sys.availability_replicas AS ar ON ars.replica_id = ar.replica_id;`
 
-// FailoverClusterAvailabilityGroupHealthQueryAzureMI returns the extended query for Azure SQL Managed Instance
-// Azure SQL Managed Instance supports Always On AG and should have access to these DMVs
+// FailoverClusterAvailabilityGroupHealthQueryAzureMI returns the enhanced query for Azure SQL Managed Instance
+// This query uses dm_hadr_database_replica_states which is available in Azure MI and contains the actual sync metrics
+// We join with availability_replicas and databases to get comprehensive health information
 const FailoverClusterAvailabilityGroupHealthQueryAzureMI = `SELECT
-    ar.replica_server_name,
-    ars.role_desc,
-    ars.synchronization_health_desc,
-    ar.availability_mode_desc,
-    ar.failover_mode_desc,
-    ar.backup_priority,
-    ar.endpoint_url,
-    ar.read_only_routing_url,
-    ars.connected_state_desc,
-    ars.operational_state_desc,
-    ars.recovery_health_desc
+    ISNULL(ar.replica_server_name, @@SERVERNAME) AS replica_server_name,
+    d.name AS database_name,
+    drs.synchronization_health_desc,
+    drs.synchronization_state_desc,
+    drs.synchronization_state,
+    CAST(drs.is_primary_replica AS int) AS is_primary_replica,
+    drs.last_commit_time,
+    ISNULL(ar.availability_mode_desc, 'UNKNOWN') AS availability_mode_desc,
+    ISNULL(ar.failover_mode_desc, 'UNKNOWN') AS failover_mode_desc,
+    ISNULL(ar.backup_priority, 50) AS backup_priority,
+    drs.database_state_desc,
+    CAST(drs.is_local AS int) AS is_local
 FROM
-    sys.dm_hadr_availability_replica_states AS ars
-INNER JOIN
-    sys.availability_replicas AS ar ON ars.replica_id = ar.replica_id;`
+    sys.dm_hadr_database_replica_states AS drs
+LEFT JOIN
+    sys.availability_replicas AS ar ON drs.replica_id = ar.replica_id
+JOIN
+    sys.databases AS d ON drs.database_id = d.database_id
+WHERE
+    drs.is_local = 1;`
 
 // FailoverClusterAvailabilityGroupQuery returns the SQL query for Availability Group configuration metrics
 // This query retrieves configuration settings for all availability groups
@@ -185,40 +191,70 @@ const FailoverClusterAvailabilityGroupQuery = `SELECT
 FROM
     sys.availability_groups AS ag;`
 
-// FailoverClusterAvailabilityGroupQueryAzureMI returns the same query for Azure SQL Managed Instance
-// Azure SQL Managed Instance supports Always On AG and should have access to these DMVs
-const FailoverClusterAvailabilityGroupQueryAzureMI = `SELECT
-    ag.name AS group_name,
-    ag.automated_backup_preference_desc,
-    ag.failure_condition_level,
-    ag.health_check_timeout,
-    ag.cluster_type_desc,
-    ag.required_synchronized_secondaries_to_commit
-FROM
-    sys.availability_groups AS ag;`
-
-// FailoverClusterRedoQueueQueryAzureMI returns the SQL query for Always On redo queue metrics
-// This query is specifically for Azure SQL Managed Instance and retrieves log send/redo queue information
-// for monitoring replication lag and redo performance in availability groups
+// FailoverClusterAvailabilityGroupQueryAzureMI returns the SQL query for database availability metrics in Azure SQL Managed Instance
+// Since Azure MI has built-in high availability without explicit availability groups,
+// this query focuses on database states and available performance metrics
 //
 // The query returns:
-// - replica_server_name: Name of the server hosting the replica
-// - database_name: Name of the database in the availability group
+// - server_name: Name of the server instance
+// - database_name: Name of the database
+// - database_state: Current state of the database (ONLINE/RESTORING/etc)
+// - database_state_desc: Description of the database state
+// - is_read_only: Whether the database is read-only
+// - availability_replica_commit_rate: Database replica commit rate per second
+// - log_generation_rate: Log generation rate for the database
+const FailoverClusterAvailabilityGroupQueryAzureMI = `SELECT
+    @@SERVERNAME AS server_name,
+    d.name AS database_name,
+    d.state AS database_state,
+    d.state_desc AS database_state_desc,
+    CAST(d.is_read_only AS int) AS is_read_only,
+    ISNULL(MAX(CASE WHEN pc.counter_name = 'Database Replica Commit Rate/sec' THEN pc.cntr_value END), 0) AS availability_replica_commit_rate,
+    ISNULL(MAX(CASE WHEN pc.counter_name = 'Log Generation Rate' THEN pc.cntr_value END), 0) AS log_generation_rate
+FROM
+    sys.databases d
+LEFT JOIN sys.dm_os_performance_counters pc ON 
+    pc.instance_name = d.name
+    AND pc.object_name LIKE '%Database Replica%'
+    AND pc.counter_name IN ('Database Replica Commit Rate/sec', 'Log Generation Rate')
+WHERE
+    d.database_id > 4  -- Exclude system databases
+GROUP BY
+    d.name, d.state, d.state_desc, d.is_read_only;`
+
+// FailoverClusterRedoQueueQueryAzureMI returns the SQL query for Always On redo queue metrics for Azure SQL Managed Instance
+// Since Azure MI has dm_hadr_database_replica_states available, we can use the actual replica state data
+// This query includes comprehensive synchronization and redo queue metrics
+//
+// The query returns:
+// - database_name: Name of the database in the replica
 // - log_send_queue_kb: Amount of log records not yet sent to secondary replica (KB)
 // - redo_queue_kb: Amount of log records waiting to be redone on secondary replica (KB)
-// - redo_rate_kb_sec: Rate at which log records are being redone on secondary replica (KB/sec)
+// - redo_rate_kb_sec: Rate at which log records are being redone (KB/sec)
+// - synchronization_health_desc: Health of synchronization (HEALTHY, PARTIALLY_HEALTHY, NOT_HEALTHY)
+// - synchronization_state_desc: State of synchronization (SYNCHRONIZING, SYNCHRONIZED, etc.)
+// - synchronization_state: Numeric synchronization state
+// - is_primary_replica: Whether this is the primary replica (1) or secondary (0)
+// - last_commit_time: Timestamp of the last transaction commit
+// - last_hardened_time: Timestamp when the last log block was hardened
 const FailoverClusterRedoQueueQueryAzureMI = `SELECT
-    ar.replica_server_name,
     d.name AS database_name,
-    drs.log_send_queue_size AS log_send_queue_kb,
-    drs.redo_queue_size AS redo_queue_kb,
-    drs.redo_rate AS redo_rate_kb_sec
+    ISNULL(drs.log_send_queue_size, 0) AS log_send_queue_kb,
+    ISNULL(drs.redo_queue_size, 0) AS redo_queue_kb,
+    ISNULL(drs.redo_rate, 0) AS redo_rate_kb_sec,
+    drs.synchronization_state_desc,
+    drs.synchronization_state,
+    CAST(drs.is_primary_replica AS int) AS is_primary_replica,
+    drs.last_commit_time,
+    drs.last_hardened_time,
+    drs.database_state_desc,
+    CAST(drs.is_local AS int) AS is_local
 FROM
-    sys.dm_hadr_database_replica_states AS drs
+    sys.dm_hadr_database_replica_states drs
 JOIN
-    sys.availability_replicas AS ar ON drs.replica_id = ar.replica_id
-JOIN
-    sys.databases AS d ON drs.database_id = d.database_id;`
+    sys.databases d ON drs.database_id = d.database_id
+WHERE
+    drs.is_local = 1;`
 
 // FailoverClusterPerformanceCounterQuery returns the SQL query for core Always On performance counters
 // This query retrieves the essential performance counters for monitoring replica performance

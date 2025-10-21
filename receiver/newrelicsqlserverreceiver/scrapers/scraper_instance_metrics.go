@@ -16,6 +16,19 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/newrelicsqlserverreceiver/queries"
 )
 
+// InstanceConfig holds configuration for instance metrics
+type InstanceConfig struct {
+	EnableInstanceMemoryMetrics        bool
+	EnableInstanceComprehensiveStats   bool
+	EnableInstanceStats                bool
+	EnableInstanceBufferPoolHitPercent bool
+	EnableInstanceProcessCounts        bool
+	EnableInstanceRunnableTasks        bool
+	EnableInstanceDiskMetrics          bool
+	EnableInstanceActiveConnections    bool
+	EnableInstanceBufferPoolSize       bool
+}
+
 // SQLConnectionInterface defines the interface for database connections
 type SQLConnectionInterface interface {
 	Query(ctx context.Context, dest interface{}, query string) error
@@ -27,14 +40,16 @@ type InstanceScraper struct {
 	logger        *zap.Logger
 	startTime     pcommon.Timestamp
 	engineEdition int
+	config        InstanceConfig
 }
 
 // NewInstanceScraper creates a new instance scraper
-func NewInstanceScraper(conn SQLConnectionInterface, logger *zap.Logger, engineEdition int) *InstanceScraper {
+func NewInstanceScraper(conn SQLConnectionInterface, logger *zap.Logger, engineEdition int, config InstanceConfig) *InstanceScraper {
 	return &InstanceScraper{
 		connection:    conn,
 		logger:        logger,
 		engineEdition: engineEdition,
+		config:        config,
 	}
 }
 
@@ -50,7 +65,21 @@ func (s *InstanceScraper) getQueryForMetric(metricName string) (string, bool) {
 }
 
 func (s *InstanceScraper) ScrapeInstanceMemoryMetrics(ctx context.Context, scopeMetrics pmetric.ScopeMetrics) error {
+	// Check if instance memory metrics are enabled
+	if !s.config.EnableInstanceMemoryMetrics {
+		s.logger.Debug("Instance memory metrics collection is disabled")
+		return nil
+	}
+
 	s.logger.Debug("Scraping SQL Server instance memory metrics")
+
+	// Check if this metric is compatible with the current engine edition
+	if !queries.IsMetricCompatible(queries.InstanceQueries, "sqlserver.instance.memory_metrics", s.engineEdition) {
+		s.logger.Debug("Instance memory metrics not supported for this engine edition",
+			zap.String("engine_type", queries.GetEngineTypeName(s.engineEdition)),
+			zap.Int("engine_edition", s.engineEdition))
+		return nil // Return nil to indicate successful skip, not an error
+	}
 
 	// Get the appropriate query for this engine edition
 	query, found := s.getQueryForMetric("sqlserver.instance.memory_metrics")
@@ -98,7 +127,21 @@ func (s *InstanceScraper) ScrapeInstanceMemoryMetrics(ctx context.Context, scope
 
 // ScrapeInstanceComprehensiveStats scrapes comprehensive instance statistics
 func (s *InstanceScraper) ScrapeInstanceComprehensiveStats(ctx context.Context, scopeMetrics pmetric.ScopeMetrics) error {
+	// Check if instance comprehensive stats are enabled
+	if !s.config.EnableInstanceComprehensiveStats {
+		s.logger.Debug("Instance comprehensive stats collection is disabled")
+		return nil
+	}
+
 	s.logger.Debug("Scraping SQL Server comprehensive instance statistics")
+
+	// Check if this metric is compatible with the current engine edition
+	if !queries.IsMetricCompatible(queries.InstanceQueries, "sqlserver.instance.comprehensive_stats", s.engineEdition) {
+		s.logger.Debug("Instance comprehensive stats not supported for this engine edition",
+			zap.String("engine_type", queries.GetEngineTypeName(s.engineEdition)),
+			zap.Int("engine_edition", s.engineEdition))
+		return nil // Return nil to indicate successful skip, not an error
+	}
 
 	// Get the appropriate query for this engine edition
 	query, found := s.getQueryForMetric("sqlserver.instance.comprehensive_stats")
@@ -245,6 +288,14 @@ func (s *InstanceScraper) processInstanceMemoryMetrics(result models.InstanceMem
 
 // ScrapeInstanceStats scrapes comprehensive SQL Server instance statistics
 func (s *InstanceScraper) ScrapeInstanceStats(ctx context.Context, scopeMetrics pmetric.ScopeMetrics) error {
+	// Check if this metric is compatible with the current engine edition
+	if !queries.IsMetricCompatible(queries.InstanceQueries, "sqlserver.instance.comprehensive_stats", s.engineEdition) {
+		s.logger.Debug("Instance comprehensive stats not supported for this engine edition",
+			zap.String("engine_type", queries.GetEngineTypeName(s.engineEdition)),
+			zap.Int("engine_edition", s.engineEdition))
+		return nil // Return nil to indicate successful skip, not an error
+	}
+
 	s.logger.Debug("Scraping SQL Server comprehensive instance statistics")
 
 	// Get the appropriate query for this engine edition
@@ -390,6 +441,14 @@ func (s *InstanceScraper) processInstanceStatsMetrics(result models.InstanceStat
 
 // ScrapeInstanceBufferPoolHitPercent scrapes buffer pool hit percent metric
 func (s *InstanceScraper) ScrapeInstanceBufferPoolHitPercent(ctx context.Context, scopeMetrics pmetric.ScopeMetrics) error {
+	// Check if this metric is compatible with the current engine edition
+	if !queries.IsMetricCompatible(queries.InstanceQueries, "sqlserver.instance.buffer_pool.hitPercent", s.engineEdition) {
+		s.logger.Debug("Instance buffer pool hit percent not supported for this engine edition",
+			zap.String("engine_type", queries.GetEngineTypeName(s.engineEdition)),
+			zap.Int("engine_edition", s.engineEdition))
+		return nil // Return nil to indicate successful skip, not an error
+	}
+
 	query, found := s.getQueryForMetric("sqlserver.instance.buffer_pool.hitPercent")
 	if !found {
 		return fmt.Errorf("no buffer pool hit percent query available for engine edition %d", s.engineEdition)
@@ -449,6 +508,14 @@ func (s *InstanceScraper) processInstanceBufferPoolHitPercent(result models.Buff
 
 // ScrapeInstanceProcessCounts scrapes process counts
 func (s *InstanceScraper) ScrapeInstanceProcessCounts(ctx context.Context, scopeMetrics pmetric.ScopeMetrics) error {
+	// Check if this metric is compatible with the current engine edition
+	if !queries.IsMetricCompatible(queries.InstanceQueries, "sqlserver.instance.process_counts", s.engineEdition) {
+		s.logger.Debug("Instance process counts not supported for this engine edition",
+			zap.String("engine_type", queries.GetEngineTypeName(s.engineEdition)),
+			zap.Int("engine_edition", s.engineEdition))
+		return nil // Return nil to indicate successful skip, not an error
+	}
+
 	query, found := s.getQueryForMetric("sqlserver.instance.process_counts")
 	if !found {
 		return fmt.Errorf("no process counts query available for engine edition %d", s.engineEdition)
@@ -506,6 +573,14 @@ func (s *InstanceScraper) processInstanceProcessCounts(result models.InstancePro
 
 // ScrapeInstanceRunnableTasks scrapes runnable tasks
 func (s *InstanceScraper) ScrapeInstanceRunnableTasks(ctx context.Context, scopeMetrics pmetric.ScopeMetrics) error {
+	// Check if this metric is compatible with the current engine edition
+	if !queries.IsMetricCompatible(queries.InstanceQueries, "sqlserver.instance.runnable_tasks", s.engineEdition) {
+		s.logger.Debug("Instance runnable tasks not supported for this engine edition",
+			zap.String("engine_type", queries.GetEngineTypeName(s.engineEdition)),
+			zap.Int("engine_edition", s.engineEdition))
+		return nil // Return nil to indicate successful skip, not an error
+	}
+
 	query, found := s.getQueryForMetric("sqlserver.instance.runnable_tasks")
 	if !found {
 		return fmt.Errorf("no runnable tasks query available for engine edition %d", s.engineEdition)
@@ -563,6 +638,14 @@ func (s *InstanceScraper) processInstanceRunnableTasks(result models.RunnableTas
 
 // ScrapeInstanceDiskMetrics scrapes disk metrics
 func (s *InstanceScraper) ScrapeInstanceDiskMetrics(ctx context.Context, scopeMetrics pmetric.ScopeMetrics) error {
+	// Check if this metric is compatible with the current engine edition
+	if !queries.IsMetricCompatible(queries.InstanceQueries, "sqlserver.instance.disk_metrics", s.engineEdition) {
+		s.logger.Debug("Instance disk metrics not supported for this engine edition",
+			zap.String("engine_type", queries.GetEngineTypeName(s.engineEdition)),
+			zap.Int("engine_edition", s.engineEdition))
+		return nil // Return nil to indicate successful skip, not an error
+	}
+
 	query, found := s.getQueryForMetric("sqlserver.instance.disk_metrics")
 	if !found {
 		return fmt.Errorf("no disk metrics query available for engine edition %d", s.engineEdition)
@@ -620,6 +703,14 @@ func (s *InstanceScraper) processInstanceDiskMetrics(result models.InstanceDiskM
 
 // ScrapeInstanceActiveConnections scrapes active connections
 func (s *InstanceScraper) ScrapeInstanceActiveConnections(ctx context.Context, scopeMetrics pmetric.ScopeMetrics) error {
+	// Check if this metric is compatible with the current engine edition
+	if !queries.IsMetricCompatible(queries.InstanceQueries, "sqlserver.instance.active_connections", s.engineEdition) {
+		s.logger.Debug("Instance active connections not supported for this engine edition",
+			zap.String("engine_type", queries.GetEngineTypeName(s.engineEdition)),
+			zap.Int("engine_edition", s.engineEdition))
+		return nil // Return nil to indicate successful skip, not an error
+	}
+
 	query, found := s.getQueryForMetric("sqlserver.instance.active_connections")
 	if !found {
 		return fmt.Errorf("no active connections query available for engine edition %d", s.engineEdition)
@@ -677,6 +768,14 @@ func (s *InstanceScraper) processInstanceActiveConnections(result models.Instanc
 
 // ScrapeInstanceBufferPoolSize scrapes buffer pool size
 func (s *InstanceScraper) ScrapeInstanceBufferPoolSize(ctx context.Context, scopeMetrics pmetric.ScopeMetrics) error {
+	// Check if this metric is compatible with the current engine edition
+	if !queries.IsMetricCompatible(queries.InstanceQueries, "sqlserver.instance.buffer_pool_size", s.engineEdition) {
+		s.logger.Debug("Instance buffer pool size not supported for this engine edition",
+			zap.String("engine_type", queries.GetEngineTypeName(s.engineEdition)),
+			zap.Int("engine_edition", s.engineEdition))
+		return nil // Return nil to indicate successful skip, not an error
+	}
+
 	query, found := s.getQueryForMetric("sqlserver.instance.buffer_pool_size")
 	if !found {
 		return fmt.Errorf("no buffer pool size query available for engine edition %d", s.engineEdition)

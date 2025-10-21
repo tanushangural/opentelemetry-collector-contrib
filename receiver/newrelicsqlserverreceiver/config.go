@@ -38,6 +38,17 @@ type Config struct {
 	TrustServerCertificate bool   `mapstructure:"trust_server_certificate"`
 	CertificateLocation    string `mapstructure:"certificate_location"`
 
+	// Instance metrics configuration - toggles for each scrape function
+	EnableInstanceMemoryMetrics        bool `mapstructure:"enable_instance_memory_metrics"`
+	EnableInstanceComprehensiveStats   bool `mapstructure:"enable_instance_comprehensive_stats"`
+	EnableInstanceStats                bool `mapstructure:"enable_instance_stats"`
+	EnableInstanceBufferPoolHitPercent bool `mapstructure:"enable_instance_buffer_pool_hit_percent"`
+	EnableInstanceProcessCounts        bool `mapstructure:"enable_instance_process_counts"`
+	EnableInstanceRunnableTasks        bool `mapstructure:"enable_instance_runnable_tasks"`
+	EnableInstanceDiskMetrics          bool `mapstructure:"enable_instance_disk_metrics"`
+	EnableInstanceActiveConnections    bool `mapstructure:"enable_instance_active_connections"`
+	EnableInstanceBufferPoolSize       bool `mapstructure:"enable_instance_buffer_pool_size"`
+
 	// Performance and feature toggles
 	EnableDatabaseSampleMetrics  bool `mapstructure:"enable_database_sample_metrics"`
 	EnableFailoverClusterMetrics bool `mapstructure:"enable_failover_cluster_metrics"`
@@ -120,6 +131,17 @@ func DefaultConfig() component.Config {
 		// Default connection settings
 		Hostname: "127.0.0.1",
 		Port:     "1433",
+
+		// Default instance metrics (all enabled by default)
+		EnableInstanceMemoryMetrics:        true,
+		EnableInstanceComprehensiveStats:   true,
+		EnableInstanceStats:                true,
+		EnableInstanceBufferPoolHitPercent: true,
+		EnableInstanceProcessCounts:        true,
+		EnableInstanceRunnableTasks:        true,
+		EnableInstanceDiskMetrics:          true,
+		EnableInstanceActiveConnections:    true,
+		EnableInstanceBufferPoolSize:       true,
 
 		// Default feature toggles (matching nri-mssql defaults)
 		EnableDatabaseSampleMetrics:  false, // Master toggle - when true, enables all database metrics

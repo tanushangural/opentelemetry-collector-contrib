@@ -830,3 +830,541 @@ func (s *InstanceScraper) processInstanceBufferPoolSize(result models.InstanceBu
 	}
 	return nil
 }
+
+// processInstanceTargetMemoryMetrics processes target server memory metrics using reflection
+func (s *InstanceScraper) processInstanceTargetMemoryMetrics(result models.InstanceTargetMemoryModel, scopeMetrics pmetric.ScopeMetrics) error {
+	// Use reflection to process the struct fields with metric tags
+	resultValue := reflect.ValueOf(result)
+	resultType := reflect.TypeOf(result)
+
+	for i := 0; i < resultValue.NumField(); i++ {
+		field := resultValue.Field(i)
+		fieldType := resultType.Field(i)
+
+		// Skip nil values
+		if field.Kind() == reflect.Ptr && field.IsNil() {
+			continue
+		}
+
+		// Get metric metadata from struct tags
+		metricName := fieldType.Tag.Get("metric_name")
+		sourceType := fieldType.Tag.Get("source_type")
+		description := fieldType.Tag.Get("description")
+		unit := fieldType.Tag.Get("unit")
+
+		if metricName == "" {
+			continue
+		}
+
+		// Create the metric using the metric_name from struct tag
+		metric := scopeMetrics.Metrics().AppendEmpty()
+		metric.SetName(metricName)
+		metric.SetDescription(description)
+		metric.SetUnit(unit)
+
+		// Handle pointer fields and get raw value
+		fieldValue := field
+		if field.Kind() == reflect.Ptr {
+			if field.IsNil() {
+				return fmt.Errorf("field value is nil for metric %s", metricName)
+			}
+			fieldValue = field.Elem()
+		}
+
+		// Get the raw value from SQL Server
+		var rawValue float64
+		switch fieldValue.Kind() {
+		case reflect.Int64:
+			rawValue = float64(fieldValue.Int())
+		case reflect.Float64:
+			rawValue = fieldValue.Float()
+		case reflect.Int, reflect.Int32:
+			rawValue = float64(fieldValue.Int())
+		default:
+			return fmt.Errorf("unsupported field type %s for metric %s", fieldValue.Kind(), metricName)
+		}
+
+		// Create appropriate OpenTelemetry metric type based on source_type
+		var dataPoint pmetric.NumberDataPoint
+		if sourceType == "rate" {
+			sum := metric.SetEmptySum()
+			sum.SetIsMonotonic(true)
+			sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+			dataPoint = sum.DataPoints().AppendEmpty()
+		} else {
+			// Gauge metrics for instantaneous values
+			gauge := metric.SetEmptyGauge()
+			dataPoint = gauge.DataPoints().AppendEmpty()
+		}
+
+		now := pcommon.NewTimestampFromTime(time.Now())
+		dataPoint.SetTimestamp(now)
+
+		if sourceType == "rate" {
+			// For cumulative metrics, the start time is fixed to the scraper's initialization time.
+			dataPoint.SetStartTimestamp(s.startTime)
+		} else {
+			// For gauge metrics, the interval is instantaneous, so start time is the same as the timestamp.
+			dataPoint.SetStartTimestamp(now)
+		}
+
+		// Set the raw cumulative value from SQL Server (for rate metrics, this will be converted to delta downstream)
+		dataPoint.SetDoubleValue(rawValue)
+
+		s.logger.Info("Successfully scraped SQL Server target memory metric",
+			zap.String("metric_name", metricName),
+			zap.String("source_type", sourceType),
+			zap.Float64("value", rawValue))
+
+		// Set attributes
+		dataPoint.Attributes().PutStr("metric.type", sourceType)
+	}
+
+	return nil
+}
+
+// processInstancePerformanceRatiosMetrics processes performance ratio metrics using reflection
+func (s *InstanceScraper) processInstancePerformanceRatiosMetrics(result models.InstancePerformanceRatiosModel, scopeMetrics pmetric.ScopeMetrics) error {
+	// Use reflection to process the struct fields with metric tags
+	resultValue := reflect.ValueOf(result)
+	resultType := reflect.TypeOf(result)
+
+	for i := 0; i < resultValue.NumField(); i++ {
+		field := resultValue.Field(i)
+		fieldType := resultType.Field(i)
+
+		// Skip nil values
+		if field.Kind() == reflect.Ptr && field.IsNil() {
+			continue
+		}
+
+		// Get metric metadata from struct tags
+		metricName := fieldType.Tag.Get("metric_name")
+		sourceType := fieldType.Tag.Get("source_type")
+		description := fieldType.Tag.Get("description")
+		unit := fieldType.Tag.Get("unit")
+
+		if metricName == "" {
+			continue
+		}
+
+		// Create the metric using the metric_name from struct tag
+		metric := scopeMetrics.Metrics().AppendEmpty()
+		metric.SetName(metricName)
+		metric.SetDescription(description)
+		metric.SetUnit(unit)
+
+		// Handle pointer fields and get raw value
+		fieldValue := field
+		if field.Kind() == reflect.Ptr {
+			if field.IsNil() {
+				return fmt.Errorf("field value is nil for metric %s", metricName)
+			}
+			fieldValue = field.Elem()
+		}
+
+		// Get the raw value from SQL Server
+		var rawValue float64
+		switch fieldValue.Kind() {
+		case reflect.Int64:
+			rawValue = float64(fieldValue.Int())
+		case reflect.Float64:
+			rawValue = fieldValue.Float()
+		case reflect.Int, reflect.Int32:
+			rawValue = float64(fieldValue.Int())
+		default:
+			return fmt.Errorf("unsupported field type %s for metric %s", fieldValue.Kind(), metricName)
+		}
+
+		// Create appropriate OpenTelemetry metric type based on source_type
+		var dataPoint pmetric.NumberDataPoint
+		if sourceType == "rate" {
+			sum := metric.SetEmptySum()
+			sum.SetIsMonotonic(true)
+			sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+			dataPoint = sum.DataPoints().AppendEmpty()
+		} else {
+			// Gauge metrics for instantaneous values
+			gauge := metric.SetEmptyGauge()
+			dataPoint = gauge.DataPoints().AppendEmpty()
+		}
+
+		now := pcommon.NewTimestampFromTime(time.Now())
+		dataPoint.SetTimestamp(now)
+
+		if sourceType == "rate" {
+			// For cumulative metrics, the start time is fixed to the scraper's initialization time.
+			dataPoint.SetStartTimestamp(s.startTime)
+		} else {
+			// For gauge metrics, the interval is instantaneous, so start time is the same as the timestamp.
+			dataPoint.SetStartTimestamp(now)
+		}
+
+		// Set the raw cumulative value from SQL Server (for rate metrics, this will be converted to delta downstream)
+		dataPoint.SetDoubleValue(rawValue)
+
+		s.logger.Info("Successfully scraped SQL Server performance ratio metric",
+			zap.String("metric_name", metricName),
+			zap.String("source_type", sourceType),
+			zap.Float64("value", rawValue))
+
+		// Set attributes
+		dataPoint.Attributes().PutStr("metric.type", sourceType)
+	}
+
+	return nil
+}
+
+// processInstanceIndexMetrics processes index performance metrics using reflection
+func (s *InstanceScraper) processInstanceIndexMetrics(result models.InstanceIndexMetricsModel, scopeMetrics pmetric.ScopeMetrics) error {
+	// Use reflection to process the struct fields with metric tags
+	resultValue := reflect.ValueOf(result)
+	resultType := reflect.TypeOf(result)
+
+	for i := 0; i < resultValue.NumField(); i++ {
+		field := resultValue.Field(i)
+		fieldType := resultType.Field(i)
+
+		// Skip nil values
+		if field.Kind() == reflect.Ptr && field.IsNil() {
+			continue
+		}
+
+		// Get metric metadata from struct tags
+		metricName := fieldType.Tag.Get("metric_name")
+		sourceType := fieldType.Tag.Get("source_type")
+		description := fieldType.Tag.Get("description")
+		unit := fieldType.Tag.Get("unit")
+
+		if metricName == "" {
+			continue
+		}
+
+		// Create the metric using the metric_name from struct tag
+		metric := scopeMetrics.Metrics().AppendEmpty()
+		metric.SetName(metricName)
+		metric.SetDescription(description)
+		metric.SetUnit(unit)
+
+		// Handle pointer fields and get raw value
+		fieldValue := field
+		if field.Kind() == reflect.Ptr {
+			if field.IsNil() {
+				return fmt.Errorf("field value is nil for metric %s", metricName)
+			}
+			fieldValue = field.Elem()
+		}
+
+		// Get the raw value from SQL Server
+		var rawValue float64
+		switch fieldValue.Kind() {
+		case reflect.Int64:
+			rawValue = float64(fieldValue.Int())
+		case reflect.Float64:
+			rawValue = fieldValue.Float()
+		case reflect.Int, reflect.Int32:
+			rawValue = float64(fieldValue.Int())
+		default:
+			return fmt.Errorf("unsupported field type %s for metric %s", fieldValue.Kind(), metricName)
+		}
+
+		// Create appropriate OpenTelemetry metric type based on source_type
+		var dataPoint pmetric.NumberDataPoint
+		if sourceType == "rate" {
+			sum := metric.SetEmptySum()
+			sum.SetIsMonotonic(true)
+			sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+			dataPoint = sum.DataPoints().AppendEmpty()
+		} else {
+			// Gauge metrics for instantaneous values
+			gauge := metric.SetEmptyGauge()
+			dataPoint = gauge.DataPoints().AppendEmpty()
+		}
+
+		now := pcommon.NewTimestampFromTime(time.Now())
+		dataPoint.SetTimestamp(now)
+
+		if sourceType == "rate" {
+			// For cumulative metrics, the start time is fixed to the scraper's initialization time.
+			dataPoint.SetStartTimestamp(s.startTime)
+		} else {
+			// For gauge metrics, the interval is instantaneous, so start time is the same as the timestamp.
+			dataPoint.SetStartTimestamp(now)
+		}
+
+		// Set the raw cumulative value from SQL Server (for rate metrics, this will be converted to delta downstream)
+		dataPoint.SetDoubleValue(rawValue)
+
+		s.logger.Info("Successfully scraped SQL Server index metric",
+			zap.String("metric_name", metricName),
+			zap.String("source_type", sourceType),
+			zap.Float64("value", rawValue))
+
+		// Set attributes
+		dataPoint.Attributes().PutStr("metric.type", sourceType)
+	}
+
+	return nil
+}
+
+// processInstanceLockMetrics processes lock performance metrics using reflection
+func (s *InstanceScraper) processInstanceLockMetrics(result models.InstanceLockMetricsModel, scopeMetrics pmetric.ScopeMetrics) error {
+	// Use reflection to process the struct fields with metric tags
+	resultValue := reflect.ValueOf(result)
+	resultType := reflect.TypeOf(result)
+
+	for i := 0; i < resultValue.NumField(); i++ {
+		field := resultValue.Field(i)
+		fieldType := resultType.Field(i)
+
+		// Skip nil values
+		if field.Kind() == reflect.Ptr && field.IsNil() {
+			continue
+		}
+
+		// Get metric metadata from struct tags
+		metricName := fieldType.Tag.Get("metric_name")
+		sourceType := fieldType.Tag.Get("source_type")
+		description := fieldType.Tag.Get("description")
+		unit := fieldType.Tag.Get("unit")
+
+		if metricName == "" {
+			continue
+		}
+
+		// Create the metric using the metric_name from struct tag
+		metric := scopeMetrics.Metrics().AppendEmpty()
+		metric.SetName(metricName)
+		metric.SetDescription(description)
+		metric.SetUnit(unit)
+
+		// Handle pointer fields and get raw value
+		fieldValue := field
+		if field.Kind() == reflect.Ptr {
+			if field.IsNil() {
+				return fmt.Errorf("field value is nil for metric %s", metricName)
+			}
+			fieldValue = field.Elem()
+		}
+
+		// Get the raw value from SQL Server
+		var rawValue float64
+		switch fieldValue.Kind() {
+		case reflect.Int64:
+			rawValue = float64(fieldValue.Int())
+		case reflect.Float64:
+			rawValue = fieldValue.Float()
+		case reflect.Int, reflect.Int32:
+			rawValue = float64(fieldValue.Int())
+		default:
+			return fmt.Errorf("unsupported field type %s for metric %s", fieldValue.Kind(), metricName)
+		}
+
+		// Create appropriate OpenTelemetry metric type based on source_type
+		var dataPoint pmetric.NumberDataPoint
+		if sourceType == "rate" {
+			sum := metric.SetEmptySum()
+			sum.SetIsMonotonic(true)
+			sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+			dataPoint = sum.DataPoints().AppendEmpty()
+		} else {
+			// Gauge metrics for instantaneous values
+			gauge := metric.SetEmptyGauge()
+			dataPoint = gauge.DataPoints().AppendEmpty()
+		}
+
+		now := pcommon.NewTimestampFromTime(time.Now())
+		dataPoint.SetTimestamp(now)
+
+		if sourceType == "rate" {
+			// For cumulative metrics, the start time is fixed to the scraper's initialization time.
+			dataPoint.SetStartTimestamp(s.startTime)
+		} else {
+			// For gauge metrics, the interval is instantaneous, so start time is the same as the timestamp.
+			dataPoint.SetStartTimestamp(now)
+		}
+
+		// Set the raw cumulative value from SQL Server (for rate metrics, this will be converted to delta downstream)
+		dataPoint.SetDoubleValue(rawValue)
+
+		s.logger.Info("Successfully scraped SQL Server lock metric",
+			zap.String("metric_name", metricName),
+			zap.String("source_type", sourceType),
+			zap.Float64("value", rawValue))
+
+		// Set attributes
+		dataPoint.Attributes().PutStr("metric.type", sourceType)
+	}
+
+	return nil
+}
+
+// New instance metric scrapers for enhanced performance monitoring
+
+// ScrapeInstanceTargetMemoryMetrics scrapes target server memory metrics
+func (s *InstanceScraper) ScrapeInstanceTargetMemoryMetrics(ctx context.Context, scopeMetrics pmetric.ScopeMetrics) error {
+	s.logger.Debug("Scraping SQL Server instance target memory metrics")
+
+	// Get the appropriate query for this engine edition
+	query, found := s.getQueryForMetric("sqlserver.instance.target_memory_metrics")
+	if !found {
+		return fmt.Errorf("no target memory query available for engine edition %d", s.engineEdition)
+	}
+
+	s.logger.Debug("Executing target memory query",
+		zap.String("query", queries.TruncateQuery(query, 100)),
+		zap.String("engine_type", queries.GetEngineTypeName(s.engineEdition)))
+
+	var results []models.InstanceTargetMemoryModel
+	if err := s.connection.Query(ctx, &results, query); err != nil {
+		s.logger.Error("Failed to execute instance target memory query",
+			zap.Error(err),
+			zap.String("query", queries.TruncateQuery(query, 100)),
+			zap.Int("engine_edition", s.engineEdition))
+		return fmt.Errorf("failed to execute instance target memory query: %w", err)
+	}
+
+	if len(results) == 0 {
+		s.logger.Warn("No results returned from instance target memory query - SQL Server may not be ready")
+		return fmt.Errorf("no results returned from instance target memory query")
+	}
+
+	result := results[0]
+	if result.TargetServerMemoryKB == nil {
+		s.logger.Error("Target memory metric is null - invalid query result")
+		return fmt.Errorf("target memory metric is null in query result")
+	}
+
+	if err := s.processInstanceTargetMemoryMetrics(result, scopeMetrics); err != nil {
+		s.logger.Error("Failed to process instance target memory metrics", zap.Error(err))
+		return fmt.Errorf("failed to process instance target memory metrics: %w", err)
+	}
+
+	s.logger.Debug("Successfully scraped instance target memory metrics")
+	return nil
+}
+
+// ScrapeInstancePerformanceRatiosMetrics scrapes performance ratio metrics
+func (s *InstanceScraper) ScrapeInstancePerformanceRatiosMetrics(ctx context.Context, scopeMetrics pmetric.ScopeMetrics) error {
+	s.logger.Debug("Scraping SQL Server instance performance ratio metrics")
+
+	// Get the appropriate query for this engine edition
+	query, found := s.getQueryForMetric("sqlserver.instance.performance_ratios_metrics")
+	if !found {
+		return fmt.Errorf("no performance ratios query available for engine edition %d", s.engineEdition)
+	}
+
+	s.logger.Debug("Executing performance ratios query",
+		zap.String("query", queries.TruncateQuery(query, 100)),
+		zap.String("engine_type", queries.GetEngineTypeName(s.engineEdition)))
+
+	var results []models.InstancePerformanceRatiosModel
+	if err := s.connection.Query(ctx, &results, query); err != nil {
+		s.logger.Error("Failed to execute instance performance ratios query",
+			zap.Error(err),
+			zap.String("query", queries.TruncateQuery(query, 100)),
+			zap.Int("engine_edition", s.engineEdition))
+		return fmt.Errorf("failed to execute instance performance ratios query: %w", err)
+	}
+
+	if len(results) == 0 {
+		s.logger.Warn("No results returned from instance performance ratios query - SQL Server may not be ready")
+		return fmt.Errorf("no results returned from instance performance ratios query")
+	}
+
+	result := results[0]
+	if result.CompilationsPerBatch == nil && result.PageSplitsPerBatch == nil {
+		s.logger.Error("All performance ratio metrics are null - invalid query result")
+		return fmt.Errorf("all performance ratio metrics are null in query result")
+	}
+
+	if err := s.processInstancePerformanceRatiosMetrics(result, scopeMetrics); err != nil {
+		s.logger.Error("Failed to process instance performance ratios metrics", zap.Error(err))
+		return fmt.Errorf("failed to process instance performance ratios metrics: %w", err)
+	}
+
+	s.logger.Debug("Successfully scraped instance performance ratios metrics")
+	return nil
+}
+
+// ScrapeInstanceIndexMetrics scrapes index performance metrics
+func (s *InstanceScraper) ScrapeInstanceIndexMetrics(ctx context.Context, scopeMetrics pmetric.ScopeMetrics) error {
+	s.logger.Debug("Scraping SQL Server instance index metrics")
+
+	// Get the appropriate query for this engine edition
+	query, found := s.getQueryForMetric("sqlserver.instance.index_metrics")
+	if !found {
+		return fmt.Errorf("no index metrics query available for engine edition %d", s.engineEdition)
+	}
+
+	s.logger.Debug("Executing index metrics query",
+		zap.String("query", queries.TruncateQuery(query, 100)),
+		zap.String("engine_type", queries.GetEngineTypeName(s.engineEdition)))
+
+	var results []models.InstanceIndexMetricsModel
+	if err := s.connection.Query(ctx, &results, query); err != nil {
+		s.logger.Error("Failed to execute instance index metrics query",
+			zap.Error(err),
+			zap.String("query", queries.TruncateQuery(query, 100)),
+			zap.Int("engine_edition", s.engineEdition))
+		return fmt.Errorf("failed to execute instance index metrics query: %w", err)
+	}
+
+	if len(results) == 0 {
+		s.logger.Warn("No results returned from instance index metrics query - SQL Server may not be ready")
+		return fmt.Errorf("no results returned from instance index metrics query")
+	}
+
+	result := results[0]
+	if result.FullScansPerSec == nil {
+		s.logger.Error("Index metrics are null - invalid query result")
+		return fmt.Errorf("index metrics are null in query result")
+	}
+
+	if err := s.processInstanceIndexMetrics(result, scopeMetrics); err != nil {
+		s.logger.Error("Failed to process instance index metrics", zap.Error(err))
+		return fmt.Errorf("failed to process instance index metrics: %w", err)
+	}
+
+	s.logger.Debug("Successfully scraped instance index metrics")
+	return nil
+}
+
+// ScrapeInstanceLockMetrics scrapes lock performance metrics
+func (s *InstanceScraper) ScrapeInstanceLockMetrics(ctx context.Context, scopeMetrics pmetric.ScopeMetrics) error {
+	s.logger.Debug("Scraping SQL Server instance lock metrics")
+
+	// Get the appropriate query for this engine edition
+	query, found := s.getQueryForMetric("sqlserver.instance.lock_metrics")
+	if !found {
+		return fmt.Errorf("no lock metrics query available for engine edition %d", s.engineEdition)
+	}
+
+	s.logger.Debug("Executing lock metrics query",
+		zap.String("query", queries.TruncateQuery(query, 100)),
+		zap.String("engine_type", queries.GetEngineTypeName(s.engineEdition)))
+
+	var results []models.InstanceLockMetricsModel
+	if err := s.connection.Query(ctx, &results, query); err != nil {
+		s.logger.Error("Failed to execute instance lock metrics query",
+			zap.Error(err),
+			zap.String("query", queries.TruncateQuery(query, 100)),
+			zap.Int("engine_edition", s.engineEdition))
+		return fmt.Errorf("failed to execute instance lock metrics query: %w", err)
+	}
+
+	if len(results) == 0 {
+		s.logger.Warn("No results returned from instance lock metrics query - SQL Server may not be ready")
+		return fmt.Errorf("no results returned from instance lock metrics query")
+	}
+
+	result := results[0]
+
+	if err := s.processInstanceLockMetrics(result, scopeMetrics); err != nil {
+		s.logger.Error("Failed to process instance lock metrics", zap.Error(err))
+		return fmt.Errorf("failed to process instance lock metrics: %w", err)
+	}
+
+	s.logger.Debug("Successfully scraped instance lock metrics")
+	return nil
+}

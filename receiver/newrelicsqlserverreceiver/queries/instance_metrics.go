@@ -133,3 +133,34 @@ const InstanceDiskMetricsQuery = `SELECT Sum(total_bytes) AS total_disk_space FR
 			FROM sys.master_files mf WITH (nolock)
 			CROSS apply sys.dm_os_volume_stats(mf.database_id, mf.file_id) dovs
 			) drives`
+
+// New instance metrics queries for enhanced performance monitoring
+
+// InstanceTargetMemoryQuery returns the SQL query for target server memory metrics
+const InstanceTargetMemoryQuery = `SELECT 
+    cntr_value AS target_server_memory_kb
+    FROM sys.dm_os_performance_counters WITH (nolock) 
+    WHERE counter_name = 'Target Server Memory (KB)'`
+
+// InstancePerformanceRatiosQuery returns SQL query for performance efficiency ratios
+const InstancePerformanceRatiosQuery = `SELECT
+    CASE WHEN t2.cntr_value > 0 THEN CAST(t1.cntr_value AS FLOAT) / CAST(t2.cntr_value AS FLOAT) ELSE 0 END AS compilations_per_batch,
+    CASE WHEN t4.cntr_value > 0 THEN CAST(t3.cntr_value AS FLOAT) / CAST(t4.cntr_value AS FLOAT) ELSE 0 END AS page_splits_per_batch
+    FROM 
+    (SELECT cntr_value FROM sys.dm_os_performance_counters WITH (nolock) WHERE counter_name = 'SQL Compilations/sec') t1,
+    (SELECT cntr_value FROM sys.dm_os_performance_counters WITH (nolock) WHERE counter_name = 'Batch Requests/sec') t2,
+    (SELECT cntr_value FROM sys.dm_os_performance_counters WITH (nolock) WHERE counter_name = 'Page Splits/sec') t3,
+    (SELECT cntr_value FROM sys.dm_os_performance_counters WITH (nolock) WHERE counter_name = 'Batch Requests/sec') t4`
+
+// InstanceIndexMetricsQuery returns SQL query for index performance metrics
+const InstanceIndexMetricsQuery = `SELECT
+    cntr_value AS full_scans_per_sec
+    FROM sys.dm_os_performance_counters WITH (nolock)
+    WHERE counter_name = 'Full Scans/sec'`
+
+// InstanceLockMetricsQuery returns SQL query for lock timeout metrics only
+// Provides lock timeouts per second - removed avg wait time due to incorrect calculation
+const InstanceLockMetricsQuery = `SELECT
+    cntr_value AS lock_timeouts_per_sec
+    FROM sys.dm_os_performance_counters WITH (nolock) 
+    WHERE counter_name = 'Lock Timeouts/sec'`

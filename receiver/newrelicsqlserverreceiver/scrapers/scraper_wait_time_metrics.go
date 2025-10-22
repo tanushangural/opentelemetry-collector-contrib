@@ -106,3 +106,70 @@ func (s *WaitTimeScraper) ScrapeWaitTimeMetrics(ctx context.Context, scopeMetric
 
 	return nil
 }
+
+// ScrapeLatchWaitTimeMetrics collects latch-specific wait time statistics from SQL Server
+func (s *WaitTimeScraper) ScrapeLatchWaitTimeMetrics(ctx context.Context, scopeMetrics pmetric.ScopeMetrics) error {
+	query, found := s.getQueryForMetric("sqlserver.wait_stats.latch.wait_time_metrics")
+	if !found {
+		return fmt.Errorf("no latch wait time metrics query available for engine edition %d", s.engineEdition)
+	}
+
+	var results []models.LatchWaitTimeMetricsModel
+	if err := s.connection.Query(ctx, &results, query); err != nil {
+		s.logger.Error("Failed to execute latch wait time query", zap.Error(err))
+		return fmt.Errorf("failed to execute latch wait time query: %w", err)
+	}
+
+	if len(results) == 0 {
+		s.logger.Warn("No results returned from latch wait time query")
+		return fmt.Errorf("no results returned from latch wait time query")
+	}
+
+	waitTimeMetric := scopeMetrics.Metrics().AppendEmpty()
+	waitTimeMetric.SetName("sqlserver.wait_stats.latch.wait_time_ms")
+	waitTimeMetric.SetDescription("Latch wait time in milliseconds")
+	waitTimeMetric.SetUnit("ms")
+	waitTimeSum := waitTimeMetric.SetEmptySum()
+	waitTimeSum.SetIsMonotonic(true)
+	waitTimeSum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+
+	waitingTasksMetric := scopeMetrics.Metrics().AppendEmpty()
+	waitingTasksMetric.SetName("sqlserver.wait_stats.latch.waiting_tasks_count")
+	waitingTasksMetric.SetDescription("Number of tasks waiting on latches")
+	waitingTasksMetric.SetUnit("1")
+	waitingTasksSum := waitingTasksMetric.SetEmptySum()
+	waitingTasksSum.SetIsMonotonic(true)
+	waitingTasksSum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+
+	now := pcommon.NewTimestampFromTime(time.Now())
+
+	for _, result := range results {
+		if result.WaitType == nil {
+			continue
+		}
+
+		if result.WaitTimeMs != nil {
+			dp := waitTimeSum.DataPoints().AppendEmpty()
+			dp.SetTimestamp(now)
+			dp.SetStartTimestamp(s.startTime)
+			dp.SetDoubleValue(float64(*result.WaitTimeMs))
+
+			attrs := dp.Attributes()
+			attrs.PutStr("wait_type", *result.WaitType)
+			attrs.PutStr("metric.type", "rate")
+		}
+
+		if result.WaitingTasksCount != nil {
+			dp := waitingTasksSum.DataPoints().AppendEmpty()
+			dp.SetTimestamp(now)
+			dp.SetStartTimestamp(s.startTime)
+			dp.SetDoubleValue(float64(*result.WaitingTasksCount))
+
+			attrs := dp.Attributes()
+			attrs.PutStr("wait_type", *result.WaitType)
+			attrs.PutStr("metric.type", "rate")
+		}
+	}
+
+	return nil
+}

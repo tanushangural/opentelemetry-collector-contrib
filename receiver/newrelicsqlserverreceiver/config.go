@@ -49,6 +49,20 @@ type Config struct {
 	EnableInstanceActiveConnections    bool `mapstructure:"enable_instance_active_connections"`
 	EnableInstanceBufferPoolSize       bool `mapstructure:"enable_instance_buffer_pool_size"`
 
+	// New instance metrics - Performance Analysis
+	EnableInstanceTargetMemoryMetrics      bool `mapstructure:"enable_instance_target_memory_metrics"`      // Target server memory metrics
+	EnableInstancePerformanceRatiosMetrics bool `mapstructure:"enable_instance_performance_ratios_metrics"` // Compilations/batch, page splits/batch ratios
+	EnableInstanceIndexMetrics             bool `mapstructure:"enable_instance_index_metrics"`              // Full scans/sec and index performance
+	EnableInstanceLockMetrics              bool `mapstructure:"enable_instance_lock_metrics"`               // Lock timeouts/sec and avg wait time
+
+	// Wait Time Metrics - Extensions
+	EnableLatchWaitTimeMetrics bool `mapstructure:"enable_latch_wait_time_metrics"` // Latch-specific wait time metrics
+
+	// Security Metrics - Server-level security monitoring
+	EnableSecurityMetrics            bool `mapstructure:"enable_security_metrics"`              // Master toggle for all security metrics
+	EnableSecurityPrincipalsMetrics  bool `mapstructure:"enable_security_principals_metrics"`   // Server principals count monitoring
+	EnableSecurityRoleMembersMetrics bool `mapstructure:"enable_security_role_members_metrics"` // Server role membership monitoring
+
 	// Performance and feature toggles
 	EnableDatabaseSampleMetrics  bool `mapstructure:"enable_database_sample_metrics"`
 	EnableFailoverClusterMetrics bool `mapstructure:"enable_failover_cluster_metrics"`
@@ -142,6 +156,20 @@ func DefaultConfig() component.Config {
 		EnableInstanceDiskMetrics:          true,
 		EnableInstanceActiveConnections:    true,
 		EnableInstanceBufferPoolSize:       true,
+
+		// Default new instance metrics (enabled by default)
+		EnableInstanceTargetMemoryMetrics:      true,
+		EnableInstancePerformanceRatiosMetrics: true,
+		EnableInstanceIndexMetrics:             true,
+		EnableInstanceLockMetrics:              true,
+
+		// Default wait time metrics extensions
+		EnableLatchWaitTimeMetrics: true,
+
+		// Default security metrics (disabled by default for security)
+		EnableSecurityMetrics:            false,
+		EnableSecurityPrincipalsMetrics:  false,
+		EnableSecurityRoleMembersMetrics: false,
 
 		// Default feature toggles (matching nri-mssql defaults)
 		EnableDatabaseSampleMetrics:  false, // Master toggle - when true, enables all database metrics

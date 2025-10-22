@@ -176,6 +176,26 @@ var instanceQueriesDefault = []*QueryDefinition{
 		MetricName:  "sqlserver.instance.active_connections",
 		Description: "SQL Server instance active connections",
 	},
+	{
+		Query:       InstanceTargetMemoryQuery,
+		MetricName:  "sqlserver.instance.target_memory_metrics",
+		Description: "SQL Server target server memory metrics",
+	},
+	{
+		Query:       InstancePerformanceRatiosQuery,
+		MetricName:  "sqlserver.instance.performance_ratios_metrics",
+		Description: "SQL Server performance ratio metrics",
+	},
+	{
+		Query:       InstanceIndexMetricsQuery,
+		MetricName:  "sqlserver.instance.index_metrics",
+		Description: "SQL Server index performance metrics",
+	},
+	{
+		Query:       InstanceLockMetricsQuery,
+		MetricName:  "sqlserver.instance.lock_metrics",
+		Description: "SQL Server lock performance metrics",
+	},
 }
 
 var instanceQueriesAzureManagedDatabase = []*QueryDefinition{
@@ -208,6 +228,26 @@ var instanceQueriesAzureManagedDatabase = []*QueryDefinition{
 		Query:       InstanceActiveConnectionsMetricsQuery,
 		MetricName:  "sqlserver.instance.active_connections",
 		Description: "SQL Server instance active connections",
+	},
+	{
+		Query:       InstanceTargetMemoryQuery,
+		MetricName:  "sqlserver.instance.target_memory_metrics",
+		Description: "SQL Server target server memory metrics",
+	},
+	{
+		Query:       InstancePerformanceRatiosQuery,
+		MetricName:  "sqlserver.instance.performance_ratios_metrics",
+		Description: "SQL Server performance ratio metrics",
+	},
+	{
+		Query:       InstanceIndexMetricsQuery,
+		MetricName:  "sqlserver.instance.index_metrics",
+		Description: "SQL Server index performance metrics",
+	},
+	{
+		Query:       InstanceLockMetricsQuery,
+		MetricName:  "sqlserver.instance.lock_metrics",
+		Description: "SQL Server lock performance metrics",
 	},
 }
 
@@ -251,6 +291,26 @@ var instanceQueriesAzureManagedInstance = []*QueryDefinition{
 		Query:       InstanceActiveConnectionsMetricsQuery,
 		MetricName:  "sqlserver.instance.active_connections",
 		Description: "SQL Server instance active connections",
+	},
+	{
+		Query:       InstanceTargetMemoryQuery,
+		MetricName:  "sqlserver.instance.target_memory_metrics",
+		Description: "SQL Server target server memory metrics",
+	},
+	{
+		Query:       InstancePerformanceRatiosQuery,
+		MetricName:  "sqlserver.instance.performance_ratios_metrics",
+		Description: "SQL Server performance ratio metrics",
+	},
+	{
+		Query:       InstanceIndexMetricsQuery,
+		MetricName:  "sqlserver.instance.index_metrics",
+		Description: "SQL Server index performance metrics",
+	},
+	{
+		Query:       InstanceLockMetricsQuery,
+		MetricName:  "sqlserver.instance.lock_metrics",
+		Description: "SQL Server lock performance metrics",
 	},
 }
 
@@ -781,6 +841,11 @@ var waitTimeQueriesDefault = []*QueryDefinition{
 		MetricName:  "sqlserver.wait_stats.wait_time_metrics",
 		Description: "SQL Server wait statistics including wait types, wait times, and waiting task counts",
 	},
+	{
+		Query:       LatchWaitTimeMetricsQuery,
+		MetricName:  "sqlserver.wait_stats.latch.wait_time_metrics",
+		Description: "SQL Server latch-specific wait statistics",
+	},
 }
 
 // Wait time query definitions for Azure SQL Database
@@ -790,6 +855,11 @@ var waitTimeQueriesAzureManagedDatabase = []*QueryDefinition{
 		MetricName:  "sqlserver.wait_stats.wait_time_metrics",
 		Description: "SQL Server wait statistics for Azure SQL Database",
 	},
+	{
+		Query:       LatchWaitTimeMetricsQuery,
+		MetricName:  "sqlserver.wait_stats.latch.wait_time_metrics",
+		Description: "SQL Server latch-specific wait statistics for Azure SQL Database",
+	},
 }
 
 // Wait time query definitions for Azure SQL Managed Instance
@@ -798,6 +868,11 @@ var waitTimeQueriesAzureManagedInstance = []*QueryDefinition{
 		Query:       WaitTimeMetricsQuery,
 		MetricName:  "sqlserver.wait_stats.wait_time_metrics",
 		Description: "SQL Server wait statistics for Azure SQL Managed Instance",
+	},
+	{
+		Query:       LatchWaitTimeMetricsQuery,
+		MetricName:  "sqlserver.wait_stats.latch.wait_time_metrics",
+		Description: "SQL Server latch-specific wait statistics for Azure SQL Managed Instance",
 	},
 }
 

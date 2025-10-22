@@ -35,6 +35,7 @@ type sqlServerScraper struct {
 	databasePrincipalsScraper     *scrapers.DatabasePrincipalsScraper
 	databaseRoleMembershipScraper *scrapers.DatabaseRoleMembershipScraper
 	waitTimeScraper               *scrapers.WaitTimeScraper // Add this line
+	securityScraper               *scrapers.SecurityScraper // Security metrics scraper
 	engineEdition                 int                       // SQL Server engine edition (0=Unknown, 5=Azure DB, 8=Azure MI)
 }
 
@@ -112,6 +113,9 @@ func (s *sqlServerScraper) start(ctx context.Context, _ component.Host) error {
 
 	// Initialize wait time scraper for wait time metrics
 	s.waitTimeScraper = scrapers.NewWaitTimeScraper(s.connection, s.logger, s.engineEdition)
+
+	// Initialize security scraper for server-level security metrics
+	s.securityScraper = scrapers.NewSecurityScraper(s.connection, s.logger, s.engineEdition)
 
 	s.logger.Info("Successfully connected to SQL Server",
 		zap.String("hostname", s.config.Hostname),
@@ -541,6 +545,77 @@ func (s *sqlServerScraper) scrape(ctx context.Context) (pmetric.Metrics, error) 
 		}
 	} else {
 		s.logger.Debug("Instance comprehensive statistics collection is disabled")
+	}
+
+	// Scrape enhanced instance metrics (new performance monitoring capabilities)
+	s.logger.Debug("Checking enhanced instance metrics configuration",
+		zap.Bool("enable_instance_target_memory_metrics", s.config.EnableInstanceTargetMemoryMetrics),
+		zap.Bool("enable_instance_performance_ratios_metrics", s.config.EnableInstancePerformanceRatiosMetrics),
+		zap.Bool("enable_instance_index_metrics", s.config.EnableInstanceIndexMetrics),
+		zap.Bool("enable_instance_lock_metrics", s.config.EnableInstanceLockMetrics))
+
+	// Scrape instance target memory metrics if enabled
+	if s.config.EnableInstanceTargetMemoryMetrics {
+		s.logger.Debug("Starting instance target memory metrics scraping")
+		scrapeCtx, cancel := context.WithTimeout(ctx, s.config.Timeout)
+		defer cancel()
+		if err := s.instanceScraper.ScrapeInstanceTargetMemoryMetrics(scrapeCtx, scopeMetrics); err != nil {
+			s.logger.Error("Failed to scrape instance target memory metrics",
+				zap.Error(err),
+				zap.Duration("timeout", s.config.Timeout))
+			scrapeErrors = append(scrapeErrors, err)
+			// Don't return here - continue with other metrics
+		} else {
+			s.logger.Debug("Successfully scraped instance target memory metrics")
+		}
+	}
+
+	// Scrape instance performance ratios metrics if enabled
+	if s.config.EnableInstancePerformanceRatiosMetrics {
+		s.logger.Debug("Starting instance performance ratios metrics scraping")
+		scrapeCtx, cancel := context.WithTimeout(ctx, s.config.Timeout)
+		defer cancel()
+		if err := s.instanceScraper.ScrapeInstancePerformanceRatiosMetrics(scrapeCtx, scopeMetrics); err != nil {
+			s.logger.Error("Failed to scrape instance performance ratios metrics",
+				zap.Error(err),
+				zap.Duration("timeout", s.config.Timeout))
+			scrapeErrors = append(scrapeErrors, err)
+			// Don't return here - continue with other metrics
+		} else {
+			s.logger.Debug("Successfully scraped instance performance ratios metrics")
+		}
+	}
+
+	// Scrape instance index metrics if enabled
+	if s.config.EnableInstanceIndexMetrics {
+		s.logger.Debug("Starting instance index metrics scraping")
+		scrapeCtx, cancel := context.WithTimeout(ctx, s.config.Timeout)
+		defer cancel()
+		if err := s.instanceScraper.ScrapeInstanceIndexMetrics(scrapeCtx, scopeMetrics); err != nil {
+			s.logger.Error("Failed to scrape instance index metrics",
+				zap.Error(err),
+				zap.Duration("timeout", s.config.Timeout))
+			scrapeErrors = append(scrapeErrors, err)
+			// Don't return here - continue with other metrics
+		} else {
+			s.logger.Debug("Successfully scraped instance index metrics")
+		}
+	}
+
+	// Scrape instance lock metrics if enabled
+	if s.config.EnableInstanceLockMetrics {
+		s.logger.Debug("Starting instance lock metrics scraping")
+		scrapeCtx, cancel := context.WithTimeout(ctx, s.config.Timeout)
+		defer cancel()
+		if err := s.instanceScraper.ScrapeInstanceLockMetrics(scrapeCtx, scopeMetrics); err != nil {
+			s.logger.Error("Failed to scrape instance lock metrics",
+				zap.Error(err),
+				zap.Duration("timeout", s.config.Timeout))
+			scrapeErrors = append(scrapeErrors, err)
+			// Don't return here - continue with other metrics
+		} else {
+			s.logger.Debug("Successfully scraped instance lock metrics")
+		}
 	}
 
 	// Scrape user connection metrics with granular toggles
@@ -1036,6 +1111,62 @@ func (s *sqlServerScraper) scrape(ctx context.Context) (pmetric.Metrics, error) 
 		s.logger.Debug("Successfully scraped wait time metrics")
 	}
 
+	// Scrape latch wait time metrics if enabled
+	if s.config.EnableLatchWaitTimeMetrics {
+		s.logger.Debug("Starting latch wait time metrics scraping")
+		scrapeCtx, cancel = context.WithTimeout(ctx, s.config.Timeout)
+		defer cancel()
+		if err := s.waitTimeScraper.ScrapeLatchWaitTimeMetrics(scrapeCtx, scopeMetrics); err != nil {
+			s.logger.Error("Failed to scrape latch wait time metrics",
+				zap.Error(err),
+				zap.Duration("timeout", s.config.Timeout))
+			scrapeErrors = append(scrapeErrors, err)
+			// Don't return here - continue with other metrics
+		} else {
+			s.logger.Debug("Successfully scraped latch wait time metrics")
+		}
+	}
+
+	// Scrape security metrics if enabled
+	if s.config.EnableSecurityMetrics {
+		s.logger.Debug("Checking security metrics configuration",
+			zap.Bool("enable_security_metrics", s.config.EnableSecurityMetrics),
+			zap.Bool("enable_security_principals_metrics", s.config.EnableSecurityPrincipalsMetrics),
+			zap.Bool("enable_security_role_members_metrics", s.config.EnableSecurityRoleMembersMetrics))
+
+		// Scrape security principals metrics if enabled
+		if s.config.EnableSecurityPrincipalsMetrics {
+			s.logger.Debug("Starting security principals metrics scraping")
+			scrapeCtx, cancel = context.WithTimeout(ctx, s.config.Timeout)
+			defer cancel()
+			if err := s.securityScraper.ScrapeSecurityPrincipalsMetrics(scrapeCtx, scopeMetrics); err != nil {
+				s.logger.Error("Failed to scrape security principals metrics",
+					zap.Error(err),
+					zap.Duration("timeout", s.config.Timeout))
+				scrapeErrors = append(scrapeErrors, err)
+				// Don't return here - continue with other metrics
+			} else {
+				s.logger.Debug("Successfully scraped security principals metrics")
+			}
+		}
+
+		// Scrape security role members metrics if enabled
+		if s.config.EnableSecurityRoleMembersMetrics {
+			s.logger.Debug("Starting security role members metrics scraping")
+			scrapeCtx, cancel = context.WithTimeout(ctx, s.config.Timeout)
+			defer cancel()
+			if err := s.securityScraper.ScrapeSecurityRoleMembersMetrics(scrapeCtx, scopeMetrics); err != nil {
+				s.logger.Error("Failed to scrape security role members metrics",
+					zap.Error(err),
+					zap.Duration("timeout", s.config.Timeout))
+				scrapeErrors = append(scrapeErrors, err)
+				// Don't return here - continue with other metrics
+			} else {
+				s.logger.Debug("Successfully scraped security role members metrics")
+			}
+		}
+	}
+
 	// Log summary of scraping results
 	if len(scrapeErrors) > 0 {
 		s.logger.Warn("Completed scraping with errors",
@@ -1087,29 +1218,29 @@ func (s *sqlServerScraper) addSystemInformationAsResourceAttributes(ctx context.
 	}
 
 	// Add hardware information
-	if systemInfo.CPUCount != nil {
-		attrs.PutInt("host.cpu.count", int64(*systemInfo.CPUCount))
-	}
-	if systemInfo.ServerMemoryKB != nil {
-		attrs.PutInt("host.memory.total_kb", *systemInfo.ServerMemoryKB)
-	}
-	if systemInfo.AvailableMemoryKB != nil {
-		attrs.PutInt("host.memory.available_kb", *systemInfo.AvailableMemoryKB)
-	}
+	// if systemInfo.CPUCount != nil {
+	// 	attrs.PutInt("host.cpu.count", int64(*systemInfo.CPUCount))
+	// }
+	// if systemInfo.ServerMemoryKB != nil {
+	// 	attrs.PutInt("host.memory.total_kb", *systemInfo.ServerMemoryKB)
+	// }
+	// if systemInfo.AvailableMemoryKB != nil {
+	// 	attrs.PutInt("host.memory.available_kb", *systemInfo.AvailableMemoryKB)
+	// }
 
-	// Add instance configuration
-	if systemInfo.IsClustered != nil {
-		attrs.PutBool("sql.is_clustered", *systemInfo.IsClustered)
-	}
-	if systemInfo.IsHadrEnabled != nil {
-		attrs.PutBool("sql.is_hadr_enabled", *systemInfo.IsHadrEnabled)
-	}
-	if systemInfo.Uptime != nil {
-		attrs.PutInt("sql.uptime_minutes", int64(*systemInfo.Uptime))
-	}
-	if systemInfo.ComputerUptime != nil {
-		attrs.PutInt("host.uptime_seconds", int64(*systemInfo.ComputerUptime))
-	}
+	// // Add instance configuration
+	// if systemInfo.IsClustered != nil {
+	// 	attrs.PutBool("sql.is_clustered", *systemInfo.IsClustered)
+	// }
+	// if systemInfo.IsHadrEnabled != nil {
+	// 	attrs.PutBool("sql.is_hadr_enabled", *systemInfo.IsHadrEnabled)
+	// }
+	// if systemInfo.Uptime != nil {
+	// 	attrs.PutInt("sql.uptime_minutes", int64(*systemInfo.Uptime))
+	// }
+	// if systemInfo.ComputerUptime != nil {
+	// 	attrs.PutInt("host.uptime_seconds", int64(*systemInfo.ComputerUptime))
+	// }
 
 	// Add network configuration
 	if systemInfo.Port != nil && *systemInfo.Port != "" {

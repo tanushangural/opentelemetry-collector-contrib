@@ -1,0 +1,118 @@
+# OpenTelemetry Collector Configuration for New Relic SQL Server Monitoring
+
+extensions:
+  health_check:
+    endpoint: localhost:1313
+
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics:
+      receivers: [newrelicsqlserver]
+      processors: [memory_limiter, cumulativetorate, batch, resource]
+      exporters: [otlphttp, debug]
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      level: none
+
+processors:
+  # Memory limiter prevents out-of-memory issues
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+  
+  # Convert cumulative metrics to rate metrics for New Relic
+  cumulativetorate:
+    state_ttl: 60m
+    include:
+      # Core SQL Server rate metrics
+      - "sqlserver.stats.sql_compilations_per_sec"
+      - "sqlserver.stats.sql_recompilations_per_sec"
+      - "sqlserver.stats.lock_waits_per_sec"
+      - "sqlserver.access.page_splits_per_sec"
+      - "sqlserver.buffer.checkpoint_pages_per_sec"
+      - "sqlserver.stats.deadlocks_per_sec"
+      - "sqlserver.stats.user_errors_per_sec"
+      - "sqlserver.stats.kill_connection_errors_per_sec"
+      - "sqlserver.bufferpool.batch_requests_per_sec"
+      - "sqlserver.instance.transactions_per_sec"
+      - "sqlserver.instance.forced_parameterizations_per_sec"
+      - "sqlserver.wait_stats.wait_time_ms"
+      - "sqlserver.wait_stats.waiting_tasks_count"
+      # Enhanced metrics (new)
+      - "sqlserver.instance.full_scans_rate"
+      - "sqlserver.instance.lock_timeouts_rate"
+      - "sqlserver.wait_stats.latch.*"
+  
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+  
+  resource:
+
+receivers:
+  newrelicsqlserver:
+    # SQL Server connection
+    hostname: ""
+    port: "1433"
+    username: ""
+    password: ""
+    collection_interval: 15s
+    
+    # Core instance metrics
+    enable_instance_memory_metrics: true
+    enable_instance_comprehensive_stats: true
+    enable_instance_stats: true
+    enable_instance_buffer_pool_hit_percent: true
+    enable_instance_process_counts: true
+    enable_instance_runnable_tasks: true
+    enable_instance_disk_metrics: true
+    enable_instance_active_connections: true
+    enable_instance_buffer_pool_size: true
+    
+    # Enhanced metrics (new)
+    enable_instance_target_memory_metrics: true      # Target server memory
+    enable_instance_performance_ratios_metrics: true # Compilations/batch ratios
+    enable_instance_index_metrics: true              # Full scans performance
+    enable_instance_lock_metrics: true               # Lock timeouts
+    enable_latch_wait_time_metrics: true             # Latch wait metrics
+    
+    # Security metrics
+    enable_security_metrics: true
+    enable_security_principals_metrics: true
+    enable_security_role_members_metrics: true
+    
+    # Query monitoring
+    enable_query_monitoring: true
+    query_monitoring_response_time_threshold: 1
+    query_monitoring_count_threshold: 20
+    query_monitoring_fetch_interval: 15
+
+exporters:
+  # New Relic OTLP endpoint
+  otlphttp:
+    endpoint: "https://staging-otlp.nr-data.net:4317"
+    headers:
+      api-key: ""
+    tls:
+      insecure: false
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 30s
+      max_elapsed_time: 300s
+    sending_queue:
+      enabled: true
+      num_consumers: 2
+      queue_size: 100
+    compression: gzip
+    timeout: 30s
+  
+  # Debug output to console
+  debug:
+    verbosity: detailed
+    sampling_initial: 2
+    sampling_thereafter: 500

@@ -164,3 +164,22 @@ const InstanceLockMetricsQuery = `SELECT
     cntr_value AS lock_timeouts_per_sec
     FROM sys.dm_os_performance_counters WITH (nolock) 
     WHERE counter_name = 'Lock Timeouts/sec'`
+
+// InstanceDiskMetricsQueryAzureSQL returns Azure SQL Database specific disk metrics query
+// Azure SQL Database doesn't have access to sys.master_files or sys.dm_os_volume_stats
+// We use database-level disk information instead
+const InstanceDiskMetricsQueryAzureSQL = `SELECT 
+	CAST(SUM(size) * 8.0 * 1024 AS BIGINT) AS total_disk_space
+FROM sys.database_files
+WHERE state = 0`
+
+// InstanceDiskMetricsQueryAzureMI returns Azure SQL Managed Instance specific disk metrics query
+// Azure SQL Managed Instance supports most sys.master_files functionality
+const InstanceDiskMetricsQueryAzureMI = `SELECT Sum(total_bytes) AS total_disk_space FROM (
+			SELECT DISTINCT
+			dovs.volume_mount_point,
+			dovs.available_bytes available_bytes,
+			dovs.total_bytes total_bytes
+			FROM sys.master_files mf WITH (nolock)
+			CROSS apply sys.dm_os_volume_stats(mf.database_id, mf.file_id) dovs
+			) drives`

@@ -283,9 +283,9 @@ var instanceQueriesAzureManagedInstance = []*QueryDefinition{
 		Description: "Number of runnable tasks",
 	},
 	{
-		Query:       InstanceDiskMetricsQuery,
+		Query:       InstanceDiskMetricsQueryAzureMI,
 		MetricName:  "sqlserver.instance.disk_metrics",
-		Description: "SQL Server instance disk metrics",
+		Description: "SQL Server instance disk metrics for Azure SQL Managed Instance",
 	},
 	{
 		Query:       InstanceActiveConnectionsMetricsQuery,
@@ -346,6 +346,21 @@ var databaseQueriesDefault = []*QueryDefinition{
 		MetricName:  "sqlserver.database.list",
 		Description: "List of user databases for metric collection",
 	},
+	{
+		Query:       DatabaseSizeQuery,
+		MetricName:  "sqlserver.database.size_metrics",
+		Description: "Database size metrics (total and data size in MB)",
+	},
+	{
+		Query:       DatabaseTransactionLogQuery,
+		MetricName:  "sqlserver.database.transaction_log_metrics",
+		Description: "Database transaction log performance metrics",
+	},
+	{
+		Query:       DatabaseLogSpaceUsageQuery,
+		MetricName:  "sqlserver.database.log_space_usage_metrics",
+		Description: "Database log space usage metrics (used log space in MB)",
+	},
 }
 
 // Database-level query definitions for Azure SQL Database
@@ -390,6 +405,21 @@ var databaseQueriesAzureManagedDatabase = []*QueryDefinition{
 		MetricName:  "sqlserver.database.list",
 		Description: "List of user databases for metric collection (Azure SQL Database)",
 	},
+	{
+		Query:       DatabaseSizeQueryAzureSQL,
+		MetricName:  "sqlserver.database.size_metrics",
+		Description: "Database size metrics for Azure SQL Database",
+	},
+	{
+		Query:       DatabaseTransactionLogQueryAzureDB,
+		MetricName:  "sqlserver.database.transaction_log_metrics",
+		Description: "Database transaction log performance metrics for Azure SQL Database",
+	},
+	{
+		Query:       DatabaseLogSpaceUsageQueryAzureSQL,
+		MetricName:  "sqlserver.database.log_space_usage_metrics",
+		Description: "Database log space usage metrics for Azure SQL Database",
+	},
 }
 
 // Database-level query definitions for Azure SQL Managed Instance
@@ -423,6 +453,21 @@ var databaseQueriesAzureManagedInstance = []*QueryDefinition{
 		Query:       DatabaseListQueryAzureMI,
 		MetricName:  "sqlserver.database.list",
 		Description: "List of user databases for metric collection (Azure SQL Managed Instance)",
+	},
+	{
+		Query:       DatabaseSizeQueryAzureMI,
+		MetricName:  "sqlserver.database.size_metrics",
+		Description: "Database size metrics for Azure SQL Managed Instance",
+	},
+	{
+		Query:       DatabaseTransactionLogQueryAzureMI,
+		MetricName:  "sqlserver.database.transaction_log_metrics",
+		Description: "Database transaction log performance metrics for Azure SQL Managed Instance",
+	},
+	{
+		Query:       DatabaseLogSpaceUsageQueryAzureMI,
+		MetricName:  "sqlserver.database.log_space_usage_metrics",
+		Description: "Database log space usage metrics for Azure SQL Managed Instance",
 	},
 }
 

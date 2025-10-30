@@ -103,6 +103,12 @@ type Config struct {
 	EnableMemoryAvailableMetrics               bool `mapstructure:"enable_memory_available_metrics"`
 	EnableMemoryUtilizationMetrics             bool `mapstructure:"enable_memory_utilization_metrics"`
 
+	// Database Metrics - New comprehensive database metrics configuration
+	EnableDatabaseMetrics               bool `mapstructure:"enable_database_metrics"`                 // Master toggle for all new database metrics
+	EnableDatabaseSizeMetrics           bool `mapstructure:"enable_database_size_metrics"`            // Database size metrics (total and data size)
+	EnableDatabaseTransactionLogMetrics bool `mapstructure:"enable_database_transaction_log_metrics"` // Transaction log performance metrics
+	EnableDatabaseLogSpaceUsageMetrics  bool `mapstructure:"enable_database_log_space_usage_metrics"` // Log space usage metrics
+
 	// User Connection Metrics - Granular toggles for different metric categories
 	EnableUserConnectionMetrics            bool `mapstructure:"enable_user_connection_metrics"`             // Master toggle for all user connection metrics
 	EnableUserConnectionStatusMetrics      bool `mapstructure:"enable_user_connection_status_metrics"`      // UserConnectionStatusMetrics - individual connection status counts
@@ -210,6 +216,12 @@ func DefaultConfig() component.Config {
 		EnableMemoryTotalMetrics:                   true,
 		EnableMemoryAvailableMetrics:               true,
 		EnableMemoryUtilizationMetrics:             true,
+
+		// Default database metrics (new comprehensive metrics - disabled by default for gradual adoption)
+		EnableDatabaseMetrics:               false, // Master toggle for all new database metrics
+		EnableDatabaseSizeMetrics:           false, // Database size metrics (total and data size)
+		EnableDatabaseTransactionLogMetrics: false, // Transaction log performance metrics
+		EnableDatabaseLogSpaceUsageMetrics:  false, // Log space usage metrics
 
 		// Default user connection metrics (all enabled by default for comprehensive monitoring)
 		EnableUserConnectionMetrics:            true, // Master toggle
@@ -614,4 +626,26 @@ func (cfg *Config) IsFailedLoginMetricsEnabled() bool {
 // IsFailedLoginSummaryMetricsEnabled checks if failed login summary metrics should be collected
 func (cfg *Config) IsFailedLoginSummaryMetricsEnabled() bool {
 	return cfg.EnableLoginLogoutMetrics || cfg.EnableFailedLoginSummaryMetrics
+}
+
+// Database Metrics - New comprehensive database metrics helper methods
+
+// IsDatabaseMetricsEnabled checks if any new database metrics should be collected (master toggle)
+func (cfg *Config) IsDatabaseMetricsEnabled() bool {
+	return cfg.EnableDatabaseMetrics
+}
+
+// IsDatabaseSizeMetricsEnabled checks if database size metrics should be collected
+func (cfg *Config) IsDatabaseSizeMetricsEnabled() bool {
+	return cfg.EnableDatabaseMetrics || cfg.EnableDatabaseSizeMetrics
+}
+
+// IsDatabaseTransactionLogMetricsEnabled checks if database transaction log metrics should be collected
+func (cfg *Config) IsDatabaseTransactionLogMetricsEnabled() bool {
+	return cfg.EnableDatabaseMetrics || cfg.EnableDatabaseTransactionLogMetrics
+}
+
+// IsDatabaseLogSpaceUsageMetricsEnabled checks if database log space usage metrics should be collected
+func (cfg *Config) IsDatabaseLogSpaceUsageMetricsEnabled() bool {
+	return cfg.EnableDatabaseMetrics || cfg.EnableDatabaseLogSpaceUsageMetrics
 }

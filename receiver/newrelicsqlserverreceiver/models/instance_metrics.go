@@ -135,7 +135,7 @@
 package models
 
 type InstanceBufferMetricsModel struct {
-    BufferPoolSize *int64 `db:"instance_buffer_pool_size" metric_name:"sqlserver.instance.buffer_pool_size" source_type:"gauge" description:"Buffer pool size" unit:"By"`
+	BufferPoolSize *int64 `db:"instance_buffer_pool_size" metric_name:"sqlserver.instance.buffer_pool_size" source_type:"gauge" description:"Buffer pool size" unit:"By"`
 }
 
 type InstanceMemoryDefinitionsModel struct {
@@ -188,4 +188,27 @@ type InstanceActiveConnectionsMetricsModel struct {
 
 type InstanceDiskMetricsModel struct {
 	TotalDiskSpace *int64 `db:"total_disk_space" metric_name:"instance.diskInBytes" source_type:"gauge"`
+}
+
+// New instance metrics models for enhanced performance monitoring
+
+// InstanceTargetMemoryModel represents target memory metrics for SQL Server memory management
+type InstanceTargetMemoryModel struct {
+	TargetServerMemoryKB *float64 `db:"target_server_memory_kb" metric_name:"sqlserver.instance.target_memory_kb" source_type:"gauge" description:"Target server memory in KB" unit:"kb"`
+}
+
+// InstancePerformanceRatiosModel represents efficiency ratio metrics for SQL Server performance analysis
+type InstancePerformanceRatiosModel struct {
+	CompilationsPerBatch *float64 `db:"compilations_per_batch" metric_name:"sqlserver.instance.compilations_per_batch" source_type:"gauge" description:"SQL compilations per batch request" unit:"1"`
+	PageSplitsPerBatch   *float64 `db:"page_splits_per_batch" metric_name:"sqlserver.instance.page_splits_per_batch" source_type:"gauge" description:"Page splits per batch request" unit:"1"`
+}
+
+// InstanceIndexMetricsModel represents index performance metrics for SQL Server query optimization
+type InstanceIndexMetricsModel struct {
+	FullScansPerSec *float64 `db:"full_scans_per_sec" metric_name:"sqlserver.instance.full_scans_rate" source_type:"rate" description:"Full table/index scans per second" unit:"1/s"`
+}
+
+// InstanceLockMetricsModel represents lock performance metrics for SQL Server concurrency monitoring
+type InstanceLockMetricsModel struct {
+	LockTimeoutsPerSec *float64 `db:"lock_timeouts_per_sec" metric_name:"sqlserver.instance.lock_timeouts_rate" source_type:"rate" description:"Number of lock timeouts per second" unit:"1/s"`
 }

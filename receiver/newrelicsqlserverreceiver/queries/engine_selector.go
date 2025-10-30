@@ -142,21 +142,6 @@ var instanceQueriesDefault = []*QueryDefinition{
 		Description: "Buffer pool size in bytes",
 	},
 	{
-		Query: `SELECT COUNT(*) as user_connections 
-		FROM sys.dm_exec_sessions 
-		WHERE is_user_process = 1`,
-		MetricName:  "sqlserver.instance.user_connections",
-		Description: "Current number of user connections",
-	},
-	{
-		Query: `SELECT cntr_value as page_life_expectancy
-		FROM sys.dm_os_performance_counters 
-		WHERE counter_name = 'Page life expectancy' 
-		AND object_name LIKE '%Buffer Manager%'`,
-		MetricName:  "sqlserver.instance.page_life_expectancy",
-		Description: "Page life expectancy in seconds",
-	},
-	{
 		Query:       InstanceMemoryDefinitions,
 		MetricName:  "sqlserver.instance.memory_metrics",
 		Description: "SQL Server instance memory metrics",
@@ -191,6 +176,26 @@ var instanceQueriesDefault = []*QueryDefinition{
 		MetricName:  "sqlserver.instance.active_connections",
 		Description: "SQL Server instance active connections",
 	},
+	{
+		Query:       InstanceTargetMemoryQuery,
+		MetricName:  "sqlserver.instance.target_memory_metrics",
+		Description: "SQL Server target server memory metrics",
+	},
+	{
+		Query:       InstancePerformanceRatiosQuery,
+		MetricName:  "sqlserver.instance.performance_ratios_metrics",
+		Description: "SQL Server performance ratio metrics",
+	},
+	{
+		Query:       InstanceIndexMetricsQuery,
+		MetricName:  "sqlserver.instance.index_metrics",
+		Description: "SQL Server index performance metrics",
+	},
+	{
+		Query:       InstanceLockMetricsQuery,
+		MetricName:  "sqlserver.instance.lock_metrics",
+		Description: "SQL Server lock performance metrics",
+	},
 }
 
 var instanceQueriesAzureManagedDatabase = []*QueryDefinition{
@@ -198,6 +203,11 @@ var instanceQueriesAzureManagedDatabase = []*QueryDefinition{
 		Query:       InstanceBufferPoolQuery,
 		MetricName:  "sqlserver.instance.buffer_pool_size",
 		Description: "Buffer pool size in bytes",
+	},
+	{
+		Query:       InstanceStatsQuery,
+		MetricName:  "sqlserver.instance.comprehensive_stats",
+		Description: "Comprehensive SQL Server instance statistics",
 	},
 	{
 		Query:       BufferPoolHitPercentMetricsQuery,
@@ -215,14 +225,29 @@ var instanceQueriesAzureManagedDatabase = []*QueryDefinition{
 		Description: "Number of runnable tasks",
 	},
 	{
-		Query:       InstanceDiskMetricsQuery,
-		MetricName:  "sqlserver.instance.disk_metrics",
-		Description: "SQL Server instance disk metrics",
-	},
-	{
 		Query:       InstanceActiveConnectionsMetricsQuery,
 		MetricName:  "sqlserver.instance.active_connections",
 		Description: "SQL Server instance active connections",
+	},
+	{
+		Query:       InstanceTargetMemoryQuery,
+		MetricName:  "sqlserver.instance.target_memory_metrics",
+		Description: "SQL Server target server memory metrics",
+	},
+	{
+		Query:       InstancePerformanceRatiosQuery,
+		MetricName:  "sqlserver.instance.performance_ratios_metrics",
+		Description: "SQL Server performance ratio metrics",
+	},
+	{
+		Query:       InstanceIndexMetricsQuery,
+		MetricName:  "sqlserver.instance.index_metrics",
+		Description: "SQL Server index performance metrics",
+	},
+	{
+		Query:       InstanceLockMetricsQuery,
+		MetricName:  "sqlserver.instance.lock_metrics",
+		Description: "SQL Server lock performance metrics",
 	},
 }
 
@@ -266,6 +291,26 @@ var instanceQueriesAzureManagedInstance = []*QueryDefinition{
 		Query:       InstanceActiveConnectionsMetricsQuery,
 		MetricName:  "sqlserver.instance.active_connections",
 		Description: "SQL Server instance active connections",
+	},
+	{
+		Query:       InstanceTargetMemoryQuery,
+		MetricName:  "sqlserver.instance.target_memory_metrics",
+		Description: "SQL Server target server memory metrics",
+	},
+	{
+		Query:       InstancePerformanceRatiosQuery,
+		MetricName:  "sqlserver.instance.performance_ratios_metrics",
+		Description: "SQL Server performance ratio metrics",
+	},
+	{
+		Query:       InstanceIndexMetricsQuery,
+		MetricName:  "sqlserver.instance.index_metrics",
+		Description: "SQL Server index performance metrics",
+	},
+	{
+		Query:       InstanceLockMetricsQuery,
+		MetricName:  "sqlserver.instance.lock_metrics",
+		Description: "SQL Server lock performance metrics",
 	},
 }
 
@@ -796,6 +841,11 @@ var waitTimeQueriesDefault = []*QueryDefinition{
 		MetricName:  "sqlserver.wait_stats.wait_time_metrics",
 		Description: "SQL Server wait statistics including wait types, wait times, and waiting task counts",
 	},
+	{
+		Query:       LatchWaitTimeMetricsQuery,
+		MetricName:  "sqlserver.wait_stats.latch.wait_time_metrics",
+		Description: "SQL Server latch-specific wait statistics",
+	},
 }
 
 // Wait time query definitions for Azure SQL Database
@@ -805,6 +855,11 @@ var waitTimeQueriesAzureManagedDatabase = []*QueryDefinition{
 		MetricName:  "sqlserver.wait_stats.wait_time_metrics",
 		Description: "SQL Server wait statistics for Azure SQL Database",
 	},
+	{
+		Query:       LatchWaitTimeMetricsQuery,
+		MetricName:  "sqlserver.wait_stats.latch.wait_time_metrics",
+		Description: "SQL Server latch-specific wait statistics for Azure SQL Database",
+	},
 }
 
 // Wait time query definitions for Azure SQL Managed Instance
@@ -813,6 +868,11 @@ var waitTimeQueriesAzureManagedInstance = []*QueryDefinition{
 		Query:       WaitTimeMetricsQuery,
 		MetricName:  "sqlserver.wait_stats.wait_time_metrics",
 		Description: "SQL Server wait statistics for Azure SQL Managed Instance",
+	},
+	{
+		Query:       LatchWaitTimeMetricsQuery,
+		MetricName:  "sqlserver.wait_stats.latch.wait_time_metrics",
+		Description: "SQL Server latch-specific wait statistics for Azure SQL Managed Instance",
 	},
 }
 
@@ -886,6 +946,18 @@ func GetQueryForMetric(defType QueryDefinitionType, metricName string, engineEdi
 	}
 
 	return "", false
+}
+
+// IsMetricCompatible checks if a metric is supported for a specific engine edition
+// Returns true if the metric is available for the given engine edition, false otherwise
+func IsMetricCompatible(defType QueryDefinitionType, metricName string, engineEdition int) bool {
+	queryDefs := GetQueryDefinitions(defType, engineEdition)
+	for _, queryDef := range queryDefs {
+		if queryDef.MetricName == metricName {
+			return true
+		}
+	}
+	return false
 }
 
 // GetEngineTypeName returns a human-readable name for the engine edition

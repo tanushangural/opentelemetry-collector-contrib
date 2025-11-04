@@ -9,6 +9,7 @@
 //
 //	type EngineSet[T any] struct {
 //	    Default                 T  // Standard SQL Server queries
+//	    AzureSQLDatabase        T  // Azure SQL //	    Default                 T  // Standard SQL Server queries
 //	    AzureSQLDatabase        T  // Azure SQL Database specific queries
 //	    AzureSQLManagedInstance T  // Azure SQL Managed Instance specific queries
 //	}
@@ -630,10 +631,42 @@ var failoverClusterQueriesDefault = []*QueryDefinition{
 		MetricName:  "sqlserver.failover_cluster.replica_state_metrics",
 		Description: "Always On Availability Group database replica state metrics",
 	},
+
 	{
-		Query:       FailoverClusterNodeQuery,
-		MetricName:  "sqlserver.failover_cluster.node_metrics",
-		Description: "Windows Server Failover Cluster node information and status",
+		Query:       FailoverClusterAvailabilityGroupHealthQuery,
+		MetricName:  "sqlserver.failover_cluster.availability_group_health_metrics",
+		Description: "Always On Availability Group health status metrics",
+	},
+	{
+		Query:       FailoverClusterAvailabilityGroupQuery,
+		MetricName:  "sqlserver.failover_cluster.availability_group_metrics",
+		Description: "Always On Availability Group configuration metrics",
+	},
+	{
+		Query:       FailoverClusterRedoQueueQuery,
+		MetricName:  "sqlserver.failover_cluster.redo_queue_metrics",
+		Description: "Always On Availability Group redo queue metrics",
+	},
+}
+
+// Failover cluster query definitions for Azure SQL Database
+// Azure SQL Database does not support Always On Availability Groups (single database model)
+// Therefore no failover cluster metrics are applicable
+var failoverClusterQueriesAzureManagedDatabase = []*QueryDefinition{
+	// Empty array - no failover cluster support in Azure SQL Database
+}
+
+// Failover cluster query definitions for Azure SQL Managed Instance
+var failoverClusterQueriesAzureManagedInstance = []*QueryDefinition{
+	{
+		Query:       FailoverClusterReplicaQuery,
+		MetricName:  "sqlserver.failover_cluster.replica_metrics",
+		Description: "Always On Availability Group replica performance metrics",
+	},
+	{
+		Query:       FailoverClusterReplicaStateQuery,
+		MetricName:  "sqlserver.failover_cluster.replica_state_metrics",
+		Description: "Always On Availability Group database replica state metrics",
 	},
 	{
 		Query:       FailoverClusterAvailabilityGroupHealthQuery,
@@ -646,92 +679,14 @@ var failoverClusterQueriesDefault = []*QueryDefinition{
 		Description: "Always On Availability Group configuration metrics",
 	},
 	{
-		Query:       FailoverClusterPerformanceCounterQuery,
-		MetricName:  "sqlserver.failover_cluster.performance_counter_metrics",
-		Description: "Always On Availability Group performance counter metrics",
+		Query:       FailoverClusterRedoQueueQuery,
+		MetricName:  "sqlserver.failover_cluster.redo_queue_metrics",
+		Description: "Always On Availability Group redo queue metrics",
 	},
 	{
-		Query:       FailoverClusterClusterPropertiesQuery,
-		MetricName:  "sqlserver.failover_cluster.cluster_properties_metrics",
-		Description: "Windows Server Failover Cluster properties and quorum information",
-	},
-}
-
-// Failover cluster query definitions for Azure SQL Database
-var failoverClusterQueriesAzureManagedDatabase = []*QueryDefinition{
-	{
-		Query:       FailoverClusterReplicaQueryAzureSQL,
-		MetricName:  "sqlserver.failover_cluster.replica_metrics",
-		Description: "Always On Availability Group replica metrics (not applicable for Azure SQL Database)",
-	},
-	{
-		Query:       FailoverClusterReplicaStateQueryAzureSQL,
-		MetricName:  "sqlserver.failover_cluster.replica_state_metrics",
-		Description: "Always On Availability Group replica state metrics (not applicable for Azure SQL Database)",
-	},
-	{
-		Query:       FailoverClusterNodeQueryAzureSQL,
-		MetricName:  "sqlserver.failover_cluster.node_metrics",
-		Description: "Cluster node metrics (not applicable for Azure SQL Database)",
-	},
-	{
-		Query:       FailoverClusterAvailabilityGroupHealthQueryAzureSQL,
-		MetricName:  "sqlserver.failover_cluster.availability_group_health_metrics",
-		Description: "Availability Group health metrics (not applicable for Azure SQL Database)",
-	},
-	{
-		Query:       FailoverClusterAvailabilityGroupQueryAzureSQL,
-		MetricName:  "sqlserver.failover_cluster.availability_group_metrics",
-		Description: "Availability Group configuration metrics (not applicable for Azure SQL Database)",
-	},
-	{
-		Query:       FailoverClusterPerformanceCounterQueryAzureSQL,
-		MetricName:  "sqlserver.failover_cluster.performance_counter_metrics",
-		Description: "Performance counter metrics (not applicable for Azure SQL Database)",
-	},
-	{
-		Query:       FailoverClusterClusterPropertiesQueryAzureSQL,
-		MetricName:  "sqlserver.failover_cluster.cluster_properties_metrics",
-		Description: "Cluster properties metrics (not applicable for Azure SQL Database)",
-	},
-}
-
-// Failover cluster query definitions for Azure SQL Managed Instance
-var failoverClusterQueriesAzureManagedInstance = []*QueryDefinition{
-	{
-		Query:       FailoverClusterReplicaQueryAzureMI,
-		MetricName:  "sqlserver.failover_cluster.replica_metrics",
-		Description: "Always On Availability Group replica metrics (limited support for Azure SQL Managed Instance)",
-	},
-	{
-		Query:       FailoverClusterReplicaStateQueryAzureMI,
-		MetricName:  "sqlserver.failover_cluster.replica_state_metrics",
-		Description: "Always On Availability Group replica state metrics (Azure SQL Managed Instance)",
-	},
-	{
-		Query:       FailoverClusterNodeQueryAzureMI,
-		MetricName:  "sqlserver.failover_cluster.node_metrics",
-		Description: "Cluster node metrics (limited support for Azure SQL Managed Instance)",
-	},
-	{
-		Query:       FailoverClusterAvailabilityGroupHealthQueryAzureMI,
-		MetricName:  "sqlserver.failover_cluster.availability_group_health_metrics",
-		Description: "Availability Group health metrics (Azure SQL Managed Instance)",
-	},
-	{
-		Query:       FailoverClusterAvailabilityGroupQueryAzureMI,
-		MetricName:  "sqlserver.failover_cluster.availability_group_metrics",
-		Description: "Availability Group configuration metrics (Azure SQL Managed Instance)",
-	},
-	{
-		Query:       FailoverClusterPerformanceCounterQueryAzureMI,
-		MetricName:  "sqlserver.failover_cluster.performance_counter_metrics",
-		Description: "Performance counter metrics (Azure SQL Managed Instance)",
-	},
-	{
-		Query:       FailoverClusterClusterPropertiesQueryAzureMI,
-		MetricName:  "sqlserver.failover_cluster.cluster_properties_metrics",
-		Description: "Cluster properties metrics (limited support for Azure SQL Managed Instance)",
+		Query:       FailoverClusterRedoQueueQuery,
+		MetricName:  "sqlserver.failover_cluster.redo_queue_metrics",
+		Description: "Always On Availability Group redo queue metrics",
 	},
 }
 

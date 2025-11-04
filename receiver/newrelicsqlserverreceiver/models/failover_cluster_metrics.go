@@ -48,6 +48,10 @@ package models
 // FailoverClusterReplicaMetrics represents Always On Availability Group replica performance metrics
 // This model captures the replica-level performance data as defined for Always On failover clusters
 type FailoverClusterReplicaMetrics struct {
+	// InstanceName represents the database instance name from performance counters
+	// Query source: sys.dm_os_performance_counters.instance_name for Database Replica counters
+	InstanceName string `db:"instance_name" source_type:"attribute"`
+
 	// LogBytesReceivedPerSec represents the rate of log records received by secondary replica from primary
 	// This metric corresponds to 'Log Bytes Received/sec' performance counter
 	// Query source: sys.dm_os_performance_counters for Database Replica counters
@@ -65,7 +69,7 @@ type FailoverClusterReplicaMetrics struct {
 }
 
 // FailoverClusterReplicaStateMetrics represents Always On Availability Group database replica state metrics
-// This model captures the database-level replica state information including log synchronization details
+// This model captures the essential database-level replica state information including log synchronization details
 type FailoverClusterReplicaStateMetrics struct {
 	// ReplicaServerName represents the name of the server hosting the replica
 	// Query source: sys.availability_replicas joined with sys.dm_hadr_database_replica_states
@@ -92,66 +96,46 @@ type FailoverClusterReplicaStateMetrics struct {
 
 	// DatabaseStateDesc represents the current state of the database replica
 	// Query source: sys.dm_hadr_database_replica_states.database_state_desc
-	// Expected values: "ONLINE", "RESTORING", "RECOVERING", "RECOVERY_PENDING", "SUSPECT", etc.
-	// Can be NULL if not applicable
-	DatabaseStateDesc *string `db:"database_state_desc" metric_name:"sqlserver.failover_cluster.database_state" source_type:"info"`
+	// Expected values: "ONLINE", "RESTORING", "RECOVERING", "RECOVERY_PENDING", "SUSPECT", "EMERGENCY", "OFFLINE"
+	DatabaseStateDesc string `db:"database_state_desc" metric_name:"sqlserver.failover_cluster.database_state" source_type:"info"`
 
 	// SynchronizationStateDesc represents the synchronization state of the database replica
 	// Query source: sys.dm_hadr_database_replica_states.synchronization_state_desc
-	// Expected values: "SYNCHRONIZED", "SYNCHRONIZING", "NOT_SYNCHRONIZING", "INITIALIZING", "REVERTING"
-	// Can be NULL if not applicable
-	SynchronizationStateDesc *string `db:"synchronization_state_desc" metric_name:"sqlserver.failover_cluster.synchronization_state" source_type:"info"`
+	// Expected values: "SYNCHRONIZING", "SYNCHRONIZED", "NOT SYNCHRONIZING", "REVERTING", "INITIALIZING"
+	SynchronizationStateDesc string `db:"synchronization_state_desc" metric_name:"sqlserver.failover_cluster.synchronization_state" source_type:"info"`
 
-	// IsLocal indicates if this is a local replica (1) or remote replica (0)
+	// IsLocal indicates whether this is a local replica (1) or remote (0)
 	// Query source: sys.dm_hadr_database_replica_states.is_local
 	IsLocal *int64 `db:"is_local" metric_name:"sqlserver.failover_cluster.is_local_replica" source_type:"gauge"`
 
-	// IsPrimaryReplica indicates if this is the primary replica (1) or secondary (0)
+	// IsPrimaryReplica indicates whether this is the primary replica (1) or secondary (0)
 	// Query source: sys.dm_hadr_database_replica_states.is_primary_replica
 	IsPrimaryReplica *int64 `db:"is_primary_replica" metric_name:"sqlserver.failover_cluster.is_primary_replica" source_type:"gauge"`
 
 	// LastCommitTime represents the timestamp of the last transaction commit
 	// Query source: sys.dm_hadr_database_replica_states.last_commit_time
-	LastCommitTime *string `db:"last_commit_time" source_type:"attribute"`
+	LastCommitTime *string `db:"last_commit_time" metric_name:"sqlserver.failover_cluster.last_commit_time" source_type:"info"`
 
 	// LastSentTime represents the timestamp when the last log block was sent
 	// Query source: sys.dm_hadr_database_replica_states.last_sent_time
-	LastSentTime *string `db:"last_sent_time" source_type:"attribute"`
+	LastSentTime *string `db:"last_sent_time" metric_name:"sqlserver.failover_cluster.last_sent_time" source_type:"info"`
 
 	// LastReceivedTime represents the timestamp when the last log block was received
 	// Query source: sys.dm_hadr_database_replica_states.last_received_time
-	LastReceivedTime *string `db:"last_received_time" source_type:"attribute"`
+	LastReceivedTime *string `db:"last_received_time" metric_name:"sqlserver.failover_cluster.last_received_time" source_type:"info"`
 
 	// LastHardenedTime represents the timestamp when the last log block was hardened
 	// Query source: sys.dm_hadr_database_replica_states.last_hardened_time
-	LastHardenedTime *string `db:"last_hardened_time" source_type:"attribute"`
+	LastHardenedTime *string `db:"last_hardened_time" metric_name:"sqlserver.failover_cluster.last_hardened_time" source_type:"info"`
 
 	// LastRedoneLSN represents the log sequence number of the last redone log record
 	// Query source: sys.dm_hadr_database_replica_states.last_redone_lsn
-	LastRedoneLSN *string `db:"last_redone_lsn" source_type:"attribute"`
+	LastRedoneLSN *string `db:"last_redone_lsn" metric_name:"sqlserver.failover_cluster.last_redone_lsn" source_type:"info"`
 
 	// SuspendReasonDesc represents the reason why the database is suspended (if applicable)
 	// Query source: sys.dm_hadr_database_replica_states.suspend_reason_desc
-	// Expected values: NULL, "SUSPEND", "REDO", "APPLY", "CAPTURE", "RESTART", "UNDO", "REVALIDATE", "OTHER"
+	// Expected values: null (not suspended), or reason descriptions like "SUSPEND_FROM_USER", etc.
 	SuspendReasonDesc *string `db:"suspend_reason_desc" metric_name:"sqlserver.failover_cluster.suspend_reason" source_type:"info"`
-}
-
-// FailoverClusterNodeMetrics represents cluster node information and status
-// This model captures the server node details in a Windows Server Failover Cluster
-type FailoverClusterNodeMetrics struct {
-	// NodeName represents the name of the server node in the cluster
-	// Query source: sys.dm_os_cluster_nodes.nodename
-	NodeName string `db:"nodename" source_type:"attribute"`
-
-	// StatusDescription represents the health state of the cluster node
-	// Query source: sys.dm_os_cluster_nodes.status_description
-	// Expected values: "Up", "Down", "Paused", etc.
-	StatusDescription string `db:"status_description" metric_name:"sqlserver.failover_cluster.node_status" source_type:"info"`
-
-	// IsCurrentOwner indicates if this is the active node currently running the SQL Server instance
-	// Query source: sys.dm_os_cluster_nodes.is_current_owner
-	// Value: 1 = active node, 0 = passive node
-	IsCurrentOwner *int64 `db:"is_current_owner" metric_name:"sqlserver.failover_cluster.node_is_current_owner" source_type:"gauge"`
 }
 
 // FailoverClusterAvailabilityGroupHealthMetrics represents Always On Availability Group health status
@@ -243,63 +227,27 @@ type FailoverClusterAvailabilityGroupMetrics struct {
 	RequiredSynchronizedSecondariesToCommit *int64 `db:"required_synchronized_secondaries_to_commit" metric_name:"sqlserver.failover_cluster.required_sync_secondaries" source_type:"gauge"`
 }
 
-// FailoverClusterPerformanceCounterMetrics represents additional Always On performance counter metrics
-// This model captures extended performance counters for comprehensive monitoring using a PIVOT structure
-// Each performance counter is represented as a separate column for easier consumption in monitoring systems
-type FailoverClusterPerformanceCounterMetrics struct {
-	// InstanceName represents the instance name for the performance counter (database name or _Total)
-	// Query source: sys.dm_os_performance_counters.instance_name
-	InstanceName string `db:"instance_name" source_type:"attribute"`
+// FailoverClusterRedoQueueMetrics represents Always On redo queue metrics
+// This model captures log send queue, redo queue, and redo rate metrics for monitoring replication performance
+// Compatible with both Standard SQL Server and Azure SQL Managed Instance
+type FailoverClusterRedoQueueMetrics struct {
+	// ReplicaServerName represents the name of the server hosting the replica
+	// Query source: sys.availability_replicas.replica_server_name joined with sys.dm_hadr_database_replica_states
+	ReplicaServerName string `db:"replica_server_name" source_type:"attribute"`
 
-	// LogSendRateKBSec represents the rate at which log records are sent to secondary replica
-	// Query source: sys.dm_os_performance_counters where counter_name = 'Log Send Rate (KB/sec)'
-	LogSendRateKBSec *int64 `db:"Log Send Rate (KB/sec)" metric_name:"sqlserver.failover_cluster.log_send_rate_kb_sec" source_type:"gauge"`
+	// DatabaseName represents the name of the database in the availability group
+	// Query source: sys.databases.name joined with sys.dm_hadr_database_replica_states
+	DatabaseName string `db:"database_name" source_type:"attribute"`
 
-	// RecoveryQueue represents the number of log records waiting to be recovered
-	// Query source: sys.dm_os_performance_counters where counter_name = 'Recovery Queue'
-	RecoveryQueue *int64 `db:"Recovery Queue" metric_name:"sqlserver.failover_cluster.recovery_queue" source_type:"gauge"`
+	// LogSendQueueKB represents the amount of log records not yet sent to secondary replica (KB)
+	// Query source: sys.dm_hadr_database_replica_states.log_send_queue_size
+	LogSendQueueKB *int64 `db:"log_send_queue_kb" metric_name:"sqlserver.failover_cluster.log_send_queue_kb" source_type:"gauge"`
 
-	// FileBytesReceivedSec represents the rate of file bytes received per second
-	// Query source: sys.dm_os_performance_counters where counter_name = 'File Bytes Received/sec'
-	FileBytesReceivedSec *int64 `db:"File Bytes Received/sec" metric_name:"sqlserver.failover_cluster.file_bytes_received_sec" source_type:"gauge"`
+	// RedoQueueKB represents the amount of log records waiting to be redone on secondary replica (KB)
+	// Query source: sys.dm_hadr_database_replica_states.redo_queue_size
+	RedoQueueKB *int64 `db:"redo_queue_kb" metric_name:"sqlserver.failover_cluster.redo_queue_kb" source_type:"gauge"`
 
-	// MirroredWriteTransactionsSec represents the rate of mirrored write transactions
-	// Query source: sys.dm_os_performance_counters where counter_name = 'Mirrored Write Transactions/sec'
-	MirroredWriteTransactionsSec *int64 `db:"Mirrored Write Transactions/sec" metric_name:"sqlserver.failover_cluster.mirrored_write_transactions_sec" source_type:"gauge"`
-
-	// LogBytesFlushedSec represents the rate of log bytes flushed per second
-	// Query source: sys.dm_os_performance_counters where counter_name = 'Log Bytes Flushed/sec'
-	LogBytesFlushedSec *int64 `db:"Log Bytes Flushed/sec" metric_name:"sqlserver.failover_cluster.log_bytes_flushed_sec" source_type:"gauge"`
-
-	// BytesSentToReplicaSec represents the rate of bytes sent to replica
-	// Query source: sys.dm_os_performance_counters where counter_name = 'Bytes Sent to Replica/sec'
-	BytesSentToReplicaSec *int64 `db:"Bytes Sent to Replica/sec" metric_name:"sqlserver.failover_cluster.bytes_sent_to_replica_sec" source_type:"gauge"`
-
-	// BytesReceivedFromReplicaSec represents the rate of bytes received from replica
-	// Query source: sys.dm_os_performance_counters where counter_name = 'Bytes Received from Replica/sec'
-	BytesReceivedFromReplicaSec *int64 `db:"Bytes Received from Replica/sec" metric_name:"sqlserver.failover_cluster.bytes_received_from_replica_sec" source_type:"gauge"`
-
-	// SendsToReplicaSec represents the rate of sends to replica
-	// Query source: sys.dm_os_performance_counters where counter_name = 'Sends to Replica/sec'
-	SendsToReplicaSec *int64 `db:"Sends to Replica/sec" metric_name:"sqlserver.failover_cluster.sends_to_replica_sec" source_type:"gauge"`
-
-	// ReceivesFromReplicaSec represents the rate of receives from replica
-	// Query source: sys.dm_os_performance_counters where counter_name = 'Receives from Replica/sec'
-	ReceivesFromReplicaSec *int64 `db:"Receives from Replica/sec" metric_name:"sqlserver.failover_cluster.receives_from_replica_sec" source_type:"gauge"`
-}
-
-// FailoverClusterClusterPropertiesMetrics represents Windows cluster properties and quorum information
-// This model captures cluster-level configuration and health information
-type FailoverClusterClusterPropertiesMetrics struct {
-	// ClusterName represents the name of the Windows Server Failover Cluster
-	// Query source: sys.dm_os_cluster_properties where property_name = 'cluster_name'
-	ClusterName *string `db:"cluster_name" source_type:"attribute"`
-
-	// QuorumType represents the quorum configuration type
-	// Query source: sys.dm_os_cluster_properties where property_name = 'quorum_type'
-	QuorumType *string `db:"quorum_type" metric_name:"sqlserver.failover_cluster.quorum_type" source_type:"info"`
-
-	// QuorumState represents the current quorum state
-	// Query source: sys.dm_os_cluster_properties where property_name = 'quorum_state'
-	QuorumState *string `db:"quorum_state" metric_name:"sqlserver.failover_cluster.quorum_state" source_type:"info"`
+	// RedoRateKBSec represents the rate at which log records are being redone on secondary replica (KB/sec)
+	// Query source: sys.dm_hadr_database_replica_states.redo_rate
+	RedoRateKBSec *int64 `db:"redo_rate_kb_sec" metric_name:"sqlserver.failover_cluster.redo_rate_kb_sec" source_type:"gauge"`
 }

@@ -70,11 +70,9 @@ type Config struct {
 	// Granular failover cluster metrics configuration
 	EnableFailoverClusterReplicaMetrics                 bool `mapstructure:"enable_failover_cluster_replica_metrics"`
 	EnableFailoverClusterReplicaStateMetrics            bool `mapstructure:"enable_failover_cluster_replica_state_metrics"`
-	EnableFailoverClusterNodeMetrics                    bool `mapstructure:"enable_failover_cluster_node_metrics"`
 	EnableFailoverClusterAvailabilityGroupHealthMetrics bool `mapstructure:"enable_failover_cluster_availability_group_health_metrics"`
 	EnableFailoverClusterAvailabilityGroupMetrics       bool `mapstructure:"enable_failover_cluster_availability_group_metrics"`
-	EnableFailoverClusterPerformanceCounterMetrics      bool `mapstructure:"enable_failover_cluster_performance_counter_metrics"`
-	EnableFailoverClusterClusterPropertiesMetrics       bool `mapstructure:"enable_failover_cluster_cluster_properties_metrics"`
+	EnableFailoverClusterRedoQueueMetrics               bool `mapstructure:"enable_failover_cluster_redo_queue_metrics"`
 
 	// Database security metrics configuration
 	EnableDatabasePrincipalsMetrics     bool `mapstructure:"enable_database_principals_metrics"`
@@ -184,11 +182,9 @@ func DefaultConfig() component.Config {
 		// Default granular failover cluster metrics (disabled by default)
 		EnableFailoverClusterReplicaMetrics:                 false, // Always On replica performance metrics
 		EnableFailoverClusterReplicaStateMetrics:            false, // Database replica state and synchronization metrics
-		EnableFailoverClusterNodeMetrics:                    false, // Windows Server Failover Cluster node metrics
 		EnableFailoverClusterAvailabilityGroupHealthMetrics: false, // Availability Group health and role status
 		EnableFailoverClusterAvailabilityGroupMetrics:       false, // Availability Group configuration metrics
-		EnableFailoverClusterPerformanceCounterMetrics:      false, // Extended performance counters for Always On
-		EnableFailoverClusterClusterPropertiesMetrics:       false, // Cluster properties and quorum information
+		EnableFailoverClusterRedoQueueMetrics:               false, // Redo queue metrics (Azure SQL Managed Instance only)
 
 		// Database security metrics defaults
 		EnableDatabasePrincipalsMetrics:     false, // Database principals and users information
@@ -485,11 +481,6 @@ func (cfg *Config) IsFailoverClusterReplicaStateMetricsEnabled() bool {
 	return cfg.EnableFailoverClusterMetrics || cfg.EnableFailoverClusterReplicaStateMetrics
 }
 
-// IsFailoverClusterNodeMetricsEnabled checks if failover cluster node metrics should be collected
-func (cfg *Config) IsFailoverClusterNodeMetricsEnabled() bool {
-	return cfg.EnableFailoverClusterMetrics || cfg.EnableFailoverClusterNodeMetrics
-}
-
 // IsFailoverClusterAvailabilityGroupHealthMetricsEnabled checks if availability group health metrics should be collected
 func (cfg *Config) IsFailoverClusterAvailabilityGroupHealthMetricsEnabled() bool {
 	return cfg.EnableFailoverClusterMetrics || cfg.EnableFailoverClusterAvailabilityGroupHealthMetrics
@@ -500,14 +491,10 @@ func (cfg *Config) IsFailoverClusterAvailabilityGroupMetricsEnabled() bool {
 	return cfg.EnableFailoverClusterMetrics || cfg.EnableFailoverClusterAvailabilityGroupMetrics
 }
 
-// IsFailoverClusterPerformanceCounterMetricsEnabled checks if failover cluster performance counter metrics should be collected
-func (cfg *Config) IsFailoverClusterPerformanceCounterMetricsEnabled() bool {
-	return cfg.EnableFailoverClusterMetrics || cfg.EnableFailoverClusterPerformanceCounterMetrics
-}
-
-// IsFailoverClusterClusterPropertiesMetricsEnabled checks if cluster properties metrics should be collected
-func (cfg *Config) IsFailoverClusterClusterPropertiesMetricsEnabled() bool {
-	return cfg.EnableFailoverClusterMetrics || cfg.EnableFailoverClusterClusterPropertiesMetrics
+// IsFailoverClusterRedoQueueMetricsEnabled checks if failover cluster redo queue metrics should be collected
+// This is only applicable to Azure SQL Managed Instance
+func (cfg *Config) IsFailoverClusterRedoQueueMetricsEnabled() bool {
+	return cfg.EnableFailoverClusterMetrics || cfg.EnableFailoverClusterRedoQueueMetrics
 }
 
 // IsDatabasePrincipalsMetricsEnabled checks if database principals metrics should be collected

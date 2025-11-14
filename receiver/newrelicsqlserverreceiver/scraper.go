@@ -36,6 +36,7 @@ type sqlServerScraper struct {
 	databaseRoleMembershipScraper *scrapers.DatabaseRoleMembershipScraper
 	waitTimeScraper               *scrapers.WaitTimeScraper // Add this line
 	securityScraper               *scrapers.SecurityScraper // Security metrics scraper
+	lockScraper                   *scrapers.LockScraper     // Lock analysis metrics scraper
 	engineEdition                 int                       // SQL Server engine edition (0=Unknown, 5=Azure DB, 8=Azure MI)
 }
 
@@ -116,6 +117,9 @@ func (s *sqlServerScraper) start(ctx context.Context, _ component.Host) error {
 
 	// Initialize security scraper for server-level security metrics
 	s.securityScraper = scrapers.NewSecurityScraper(s.connection, s.logger, s.engineEdition)
+
+	// Initialize lock scraper for lock analysis metrics
+	s.lockScraper = scrapers.NewLockScraper(s.connection, s.logger, s.engineEdition)
 
 	s.logger.Info("Successfully connected to SQL Server",
 		zap.String("hostname", s.config.Hostname),
@@ -1182,6 +1186,38 @@ func (s *sqlServerScraper) scrape(ctx context.Context) (pmetric.Metrics, error) 
 			} else {
 				s.logger.Debug("Successfully scraped security role members metrics")
 			}
+		}
+	}
+
+	// Scrape lock resource metrics if enabled
+	if s.config.EnableLockResourceMetrics {
+		s.logger.Debug("Starting lock resource metrics scraping")
+		scrapeCtx, cancel := context.WithTimeout(ctx, s.config.Timeout)
+		defer cancel()
+		if err := s.lockScraper.ScrapeLockResourceMetrics(scrapeCtx, scopeMetrics); err != nil {
+			s.logger.Error("Failed to scrape lock resource metrics",
+				zap.Error(err),
+				zap.Duration("timeout", s.config.Timeout))
+			scrapeErrors = append(scrapeErrors, err)
+			// Don't return here - continue with other metrics
+		} else {
+			s.logger.Debug("Successfully scraped lock resource metrics")
+		}
+	}
+
+	// Scrape lock mode metrics if enabled
+	if s.config.EnableLockModeMetrics {
+		s.logger.Debug("Starting lock mode metrics scraping")
+		scrapeCtx, cancel := context.WithTimeout(ctx, s.config.Timeout)
+		defer cancel()
+		if err := s.lockScraper.ScrapeLockModeMetrics(scrapeCtx, scopeMetrics); err != nil {
+			s.logger.Error("Failed to scrape lock mode metrics",
+				zap.Error(err),
+				zap.Duration("timeout", s.config.Timeout))
+			scrapeErrors = append(scrapeErrors, err)
+			// Don't return here - continue with other metrics
+		} else {
+			s.logger.Debug("Successfully scraped lock mode metrics")
 		}
 	}
 

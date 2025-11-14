@@ -55,6 +55,10 @@ type Config struct {
 	EnableInstanceIndexMetrics             bool `mapstructure:"enable_instance_index_metrics"`              // Full scans/sec and index performance
 	EnableInstanceLockMetrics              bool `mapstructure:"enable_instance_lock_metrics"`               // Lock timeouts/sec and avg wait time
 
+	// Lock Analysis Metrics - Detailed lock analysis for resource types and modes
+	EnableLockResourceMetrics bool `mapstructure:"enable_lock_resource_metrics"` // Lock resource analysis (what's being locked)
+	EnableLockModeMetrics     bool `mapstructure:"enable_lock_mode_metrics"`     // Lock mode analysis (how it's locked)
+
 	// Wait Time Metrics - Extensions
 	EnableLatchWaitTimeMetrics bool `mapstructure:"enable_latch_wait_time_metrics"` // Latch-specific wait time metrics
 
@@ -166,6 +170,10 @@ func DefaultConfig() component.Config {
 		EnableInstancePerformanceRatiosMetrics: true,
 		EnableInstanceIndexMetrics:             true,
 		EnableInstanceLockMetrics:              true,
+
+		// Default lock analysis metrics (enabled by default)
+		EnableLockResourceMetrics: true,
+		EnableLockModeMetrics:     true,
 
 		// Default wait time metrics extensions
 		EnableLatchWaitTimeMetrics: true,

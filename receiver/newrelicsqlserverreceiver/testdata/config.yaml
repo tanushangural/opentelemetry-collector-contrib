@@ -5,7 +5,7 @@
 extensions:
   # Health check endpoint
   health_check:
-    endpoint: localhost:13133
+    endpoint: localhost:13134
 
 # Service configuration
 service:
@@ -76,13 +76,14 @@ receivers:
     # Optional: Named instance (if using SQL Server named instances)
     # instance: "${SQLSERVER_INSTANCE}"            # e.g., "SQLEXPRESS" 
     
-    # Optional: Connection timeout
-    # connection_timeout: 30s
+    # Query execution timeout (increased for slow queries on busy systems)
+    timeout: 300s
     
     # Collection interval (how often to collect metrics)
     collection_interval: 60s
 
-    query_monitoring_fetch_interval: 15        # seconds - how often to fetch slow queries
+    # Lookback window for slow queries (increased to 60s to match collection_interval)
+    query_monitoring_fetch_interval: 60        # seconds - how often to fetch slow queries
     
     # Optional: Initial delay before starting collection
     # initial_delay: 10s
@@ -91,8 +92,9 @@ receivers:
     enable_query_monitoring: true
     
     # Query monitoring thresholds (required when enable_query_monitoring is true)
-    query_monitoring_response_time_threshold: 1  # milliseconds - queries slower than this will be monitored
-    query_monitoring_count_threshold: 5          # minimum execution count for queries to be monitored
+    query_monitoring_response_time_threshold: 10  # milliseconds - queries slower than this will be monitored
+    query_monitoring_count_threshold: 5           # minimum execution count for queries to be monitored
+    query_monitoring_text_truncate_limit: 4094    # characters - maximum length of SQL text in query monitoring results (4KB - 2 bytes)
 
 # Exporters send telemetry data to destinations
 exporters:

@@ -237,15 +237,18 @@ func (s *QueryPerformanceScraper) ScrapeQueryExecutionPlanMetrics(ctx context.Co
 func (s *QueryPerformanceScraper) processSlowQueryMetrics(result models.SlowQuery, scopeMetrics pmetric.ScopeMetrics, index int) error {
     timestamp := pcommon.NewTimestampFromTime(time.Now())
     
-    // CARDINALITY-SAFE: Create limited common attributes (QueryID only as primary key)
+    // CARDINALITY-SAFE: Create limited common attributes (query_id only as primary key)
     // Avoids high-cardinality attributes like full query text, timestamps, and multiple identifiers
     createSafeAttributes := func() pcommon.Map {
         attrs := pcommon.NewMap()
         if result.QueryID != nil {
-            attrs.PutStr("QueryID", result.QueryID.String())
+            attrs.PutStr("query_id", result.QueryID.String())
         }
         if result.DatabaseName != nil {
-            attrs.PutStr("DatabaseName", *result.DatabaseName)
+            attrs.PutStr("database_name", *result.DatabaseName)
+        }
+        if result.SchemaName != nil {
+            attrs.PutStr("schema_name", *result.SchemaName)
         }
         if result.StatementType != nil {
             attrs.PutStr("statement_type", *result.StatementType) 
@@ -497,21 +500,21 @@ func (s *QueryPerformanceScraper) processBlockingSessionMetrics(result models.Bl
         
         // Set attributes including blocking SPID as an attribute
         attrs := dataPoint.Attributes()
-        attrs.PutInt("BlockingSPID", int64(*result.BlockingSPID))
+        attrs.PutInt("blocking_spid", int64(*result.BlockingSPID))
         if result.BlockingStatus != nil {
-            attrs.PutStr("BlockingStatus", *result.BlockingStatus)
+            attrs.PutStr("blocking_status", *result.BlockingStatus)
         }
         if result.WaitType != nil {
-            attrs.PutStr("WaitType", *result.WaitType)
+            attrs.PutStr("wait_type", *result.WaitType)
         }
         if result.DatabaseName != nil {
-            attrs.PutStr("DatabaseName", *result.DatabaseName)
+            attrs.PutStr("database_name", *result.DatabaseName)
         }
         if result.CommandType != nil {
-            attrs.PutStr("CommandType", *result.CommandType)
+            attrs.PutStr("command_type", *result.CommandType)
         }
         if result.BlockingQueryText != nil && *result.BlockingQueryText != "" {
-            attrs.PutStr("BlockingQueryText", helpers.AnonymizeQueryText(*result.BlockingQueryText))
+            attrs.PutStr("blocking_query_text", helpers.AnonymizeQueryText(*result.BlockingQueryText))
         }
     }
 
@@ -530,24 +533,24 @@ func (s *QueryPerformanceScraper) processBlockingSessionMetrics(result models.Bl
         
         // Set attributes including blocked SPID as an attribute
         attrs := dataPoint.Attributes()
-        attrs.PutInt("BlockedSPID", int64(*result.BlockedSPID))
+        attrs.PutInt("blocked_spid", int64(*result.BlockedSPID))
         if result.BlockedStatus != nil {
-            attrs.PutStr("BlockedStatus", *result.BlockedStatus)
+            attrs.PutStr("blocked_status", *result.BlockedStatus)
         }
         if result.WaitType != nil {
-            attrs.PutStr("WaitType", *result.WaitType)
+            attrs.PutStr("wait_type", *result.WaitType)
         }
         if result.DatabaseName != nil {
-            attrs.PutStr("DatabaseName", *result.DatabaseName)
+            attrs.PutStr("database_name", *result.DatabaseName)
         }
         if result.CommandType != nil {
-            attrs.PutStr("CommandType", *result.CommandType)
+            attrs.PutStr("command_type", *result.CommandType)
         }
         if result.BlockedQueryText != nil {
-            attrs.PutStr("BlockedQueryText", helpers.AnonymizeQueryText(*result.BlockedQueryText))
+            attrs.PutStr("blocked_query_text", helpers.AnonymizeQueryText(*result.BlockedQueryText))
         }
         if result.BlockedQueryStartTime != nil {
-            attrs.PutStr("BlockedQueryStartTime", *result.BlockedQueryStartTime)
+            attrs.PutStr("blocked_query_start_time", *result.BlockedQueryStartTime)
         }
     }
 
@@ -568,16 +571,16 @@ func (s *QueryPerformanceScraper) processWaitTimeAnalysisMetrics(result models.W
     createCommonAttributes := func() pcommon.Map {
         attrs := pcommon.NewMap()
         if result.DatabaseName != nil {
-            attrs.PutStr("DatabaseName", *result.DatabaseName)
+            attrs.PutStr("database_name", *result.DatabaseName)
         }
         if result.QueryID != nil {
-            attrs.PutStr("QueryID", result.QueryID.String())
+            attrs.PutStr("query_id", result.QueryID.String())
         }
         if result.WaitCategory != nil {
-            attrs.PutStr("WaitCategory", *result.WaitCategory)
+            attrs.PutStr("wait_category", *result.WaitCategory)
         }
         if result.CollectionTimestamp != nil {
-            attrs.PutStr("CollectionTimestamp", *result.CollectionTimestamp)
+            attrs.PutStr("collection_timestamp", *result.CollectionTimestamp)
         }
         return attrs
     }
@@ -679,11 +682,11 @@ func (s *QueryPerformanceScraper) processQueryExecutionPlanMetrics(result models
     timestamp := pcommon.NewTimestampFromTime(time.Now())
     
     // CARDINALITY-SAFE: Create limited common attributes
-    // Only include QueryID as the primary identifier, avoid full SQL text and multiple hashes
+    // Only include query_id as the primary identifier, avoid full SQL text and multiple hashes
     createSafeAttributes := func() pcommon.Map {
         attrs := pcommon.NewMap()
         if result.QueryID != nil {
-            attrs.PutStr("QueryID", result.QueryID.String())
+            attrs.PutStr("query_id", result.QueryID.String())
         }
         // NOTE: Not including PlanHandle, QueryPlanID, and SQLText as attributes to prevent cardinality explosion
         // These can be logged or stored separately for drill-down analysis
@@ -759,7 +762,8 @@ func (s *QueryPerformanceScraper) processQueryExecutionPlanMetrics(result models
 }
 
 // getSlowQueryResults fetches slow query results to extract QueryIDs for execution plan analysis
-func (s *QueryPerformanceScraper) getSlowQueryResults(ctx context.Context, intervalSeconds, topN, elapsedTimeThreshold, textTruncateLimit int) ([]models.SlowQuery, error) {
+func (s *QueryPerformanceScraper) getSlowQueryResults(ctx context.Context, intervalSeconds, topN, elapsedTimeThreshold, 
+    textTruncateLimit int) ([]models.SlowQuery, error) {
     // Format the slow query with parameters
     formattedQuery := fmt.Sprintf(queries.SlowQuery, intervalSeconds, topN, elapsedTimeThreshold, textTruncateLimit)
 

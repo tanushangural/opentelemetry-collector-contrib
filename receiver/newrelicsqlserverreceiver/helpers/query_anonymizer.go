@@ -22,6 +22,10 @@ var (
 	// This follows the same pattern used by nri-mssql for compatibility.
 	literalAnonymizer = regexp.MustCompile(`'[^']*'|\d+|".*?"`)
 	
+	// dmvPopCommentRemover removes DMV_POP test/synthetic query markers
+	// Matches patterns like: /* DMV_POP_1763101875620857000_37433 */
+	dmvPopCommentRemover = regexp.MustCompile(`/\*\s*DMV_POP_[^*]*\*/\s*`)
+	
 	// statementTextRegex is used to find StatementText attributes in execution plan XML
 	// Matches: StatementText="..." or StatementText='...'
 	statementTextRegex = regexp.MustCompile(`StatementText\s*=\s*("[^"]*"|'[^']*')`)
@@ -62,8 +66,15 @@ func AnonymizeQueryText(query string) string {
 		return query[:maxSafeLength] + "...[content too large for anonymization]"
 	}
 	
-	// Replace all literal values (strings, numbers, quoted content) with placeholders
-	anonymizedQuery := literalAnonymizer.ReplaceAllString(query, "?")
+	// Step 1: Remove DMV_POP test/synthetic query markers (e.g., /* DMV_POP_1763101875620857000_37433 */)
+	anonymizedQuery := dmvPopCommentRemover.ReplaceAllString(query, "")
+	
+	// Step 2: Replace all literal values (strings, numbers, quoted content) with placeholders
+	anonymizedQuery = literalAnonymizer.ReplaceAllString(anonymizedQuery, "?")
+	
+	// Step 3: Trim any extra whitespace created by comment removal
+	anonymizedQuery = strings.TrimSpace(anonymizedQuery)
+	
 	return anonymizedQuery
 }
 

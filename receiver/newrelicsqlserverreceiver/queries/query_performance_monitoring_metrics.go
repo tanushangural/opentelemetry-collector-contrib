@@ -363,7 +363,7 @@ WITH StatementDetails AS (
 		AND EXISTS (
 			SELECT 1
 			FROM sys.databases d
-			WHERE d.database_id = CONVERT(INT, pa.value) AND d.is_query_store_on = 1
+			WHERE d.database_id = CONVERT(INT, pa.value)
 		)
 )
 -- Select the raw, non-aggregated statement data.

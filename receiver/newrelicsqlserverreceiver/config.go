@@ -110,6 +110,7 @@ type Config struct {
 	QueryMonitoringResponseTimeThreshold int  `mapstructure:"query_monitoring_response_time_threshold"`
 	QueryMonitoringCountThreshold        int  `mapstructure:"query_monitoring_count_threshold"`
 	QueryMonitoringFetchInterval         int  `mapstructure:"query_monitoring_fetch_interval"`
+	QueryMonitoringTextTruncateLimit     int  `mapstructure:"query_monitoring_text_truncate_limit"`
 }
 
 // DefaultConfig returns a Config struct with default values
@@ -190,6 +191,7 @@ func DefaultConfig() component.Config {
 		QueryMonitoringResponseTimeThreshold: 1,
 		QueryMonitoringCountThreshold:        20,
 		QueryMonitoringFetchInterval:         15,
+		QueryMonitoringTextTruncateLimit:     4094, // Default text truncate limit (4KB - 2 bytes for null terminator)
 	}
 
 	// Set default collection interval to 15 seconds
@@ -226,6 +228,9 @@ func (cfg *Config) Validate() error {
 		}
 		if cfg.QueryMonitoringCountThreshold <= 0 {
 			return errors.New("query_monitoring_count_threshold must be positive when query monitoring is enabled")
+		}
+		if cfg.QueryMonitoringTextTruncateLimit <= 0 {
+			return errors.New("query_monitoring_text_truncate_limit must be positive when query monitoring is enabled")
 		}
 	}
 

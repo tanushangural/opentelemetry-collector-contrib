@@ -334,6 +334,8 @@ WITH StatementDetails AS (
 		(qs.total_elapsed_time / qs.execution_count) / 1000.0 AS avg_elapsed_time_ms,
 		(qs.total_logical_reads / qs.execution_count) AS avg_disk_reads,
 		(qs.total_logical_writes / qs.execution_count) AS avg_disk_writes,
+		-- Average rows processed (returned by query)
+		(qs.total_rows / qs.execution_count) AS avg_rows_processed,
 		-- Determine statement type (SELECT, INSERT, etc.)
 		CASE
 			WHEN UPPER(LTRIM(SUBSTRING(qt.text, (qs.statement_start_offset / 2) + 1, 6))) LIKE 'SELECT' THEN 'SELECT'
@@ -385,6 +387,7 @@ SELECT TOP (@TopN)
     s.avg_elapsed_time_ms,
     s.avg_disk_reads,
     s.avg_disk_writes,
+    s.avg_rows_processed,
     s.statement_type,
     FORMAT(
         SYSDATETIMEOFFSET() AT TIME ZONE 'UTC',

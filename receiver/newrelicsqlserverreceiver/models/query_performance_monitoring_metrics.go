@@ -122,17 +122,18 @@ type SlowQuery struct {
 	SchemaName             *string  `db:"schema_name" metric_name:"schema_name" source_type:"attribute"`
 	LastExecutionTimestamp *string  `db:"last_execution_timestamp" metric_name:"last_execution_timestamp" source_type:"attribute"`
 	ExecutionCount         *int64   `db:"execution_count" metric_name:"execution_count" source_type:"gauge"`
-	AvgCPUTimeMS           *float64 `db:"avg_cpu_time_ms" metric_name:"avg_cpu_time_ms" source_type:"gauge"`
-	AvgElapsedTimeMS       *float64 `db:"avg_elapsed_time_ms" metric_name:"avg_elapsed_time_ms" source_type:"gauge"`
-	AvgDiskReads           *float64 `db:"avg_disk_reads" metric_name:"avg_disk_reads" source_type:"gauge"`
-	AvgDiskWrites          *float64 `db:"avg_disk_writes" metric_name:"avg_disk_writes" source_type:"gauge"`
-	StatementType          *string  `db:"statement_type" metric_name:"statement_type" source_type:"attribute"`
+	AvgCPUTimeMS           *float64 `db:"avg_cpu_time_ms" metric_name:"sqlserver.slowquery.avg_cpu_time_ms" source_type:"gauge"`
+	AvgElapsedTimeMS       *float64 `db:"avg_elapsed_time_ms" metric_name:"sqlserver.slowquery.avg_elapsed_time_ms" source_type:"gauge"`
+	AvgDiskReads           *float64 `db:"avg_disk_reads" metric_name:"sqlserver.slowquery.avg_disk_reads" source_type:"gauge"`
+	AvgDiskWrites          *float64 `db:"avg_disk_writes" metric_name:"sqlserver.slowquery.avg_disk_writes" source_type:"gauge"`
+	AvgRowsProcessed       *float64 `db:"avg_rows_processed" metric_name:"sqlserver.slowquery.rows_processed" source_type:"gauge"`
+	StatementType          *string  `db:"statement_type" metric_name:"sqlserver.slowquery.statement_type" source_type:"attribute"`
 	CollectionTimestamp    *string  `db:"collection_timestamp" metric_name:"collection_timestamp" source_type:"attribute"`
 }
 
 // BlockingSession represents blocking session information
 type BlockingSession struct {
-BlockingSPID          *int64   `db:"blocking_spid" metric_name:"sqlserver.blocking.spid" source_type:"gauge"`
+	BlockingSPID          *int64   `db:"blocking_spid" metric_name:"sqlserver.blocking.spid" source_type:"gauge"`
 	BlockingStatus        *string  `db:"blocking_status" metric_name:"sqlserver.blocking.status" source_type:"attribute"`
 	BlockedSPID           *int64   `db:"blocked_spid" metric_name:"sqlserver.blocked.spid" source_type:"gauge"`
 	BlockedStatus         *string  `db:"blocked_status" metric_name:"sqlserver.blocked.status" source_type:"attribute"`
@@ -147,82 +148,84 @@ BlockingSPID          *int64   `db:"blocking_spid" metric_name:"sqlserver.blocki
 
 // WaitTimeAnalysis represents wait time analysis data for SQL Server queries
 type WaitTimeAnalysis struct {
-	QueryID             *QueryID   `db:"query_id" metric_name:"query_id" source_type:"attribute"`
-	DatabaseName        *string    `db:"database_name" metric_name:"database_name" source_type:"attribute"`
-	QueryText           *string    `db:"query_text" metric_name:"query_text" source_type:"attribute"`
-	WaitCategory        *string    `db:"wait_category" metric_name:"wait_category" source_type:"attribute"`
-	TotalWaitTimeMs     *float64   `db:"total_wait_time_ms" metric_name:"total_wait_time_ms" source_type:"gauge"`
-	AvgWaitTimeMs       *float64   `db:"avg_wait_time_ms" metric_name:"avg_wait_time_ms" source_type:"gauge"`
-	WaitEventCount      *int64     `db:"wait_event_count" metric_name:"wait_event_count" source_type:"gauge"`
-	LastExecutionTime   *string    `db:"last_execution_time" metric_name:"last_execution_time" source_type:"attribute"`
-	CollectionTimestamp *string    `db:"collection_timestamp" metric_name:"collection_timestamp" source_type:"attribute"`
+	QueryID             *QueryID `db:"query_id" metric_name:"query_id" source_type:"attribute"`
+	DatabaseName        *string  `db:"database_name" metric_name:"database_name" source_type:"attribute"`
+	QueryText           *string  `db:"query_text" metric_name:"query_text" source_type:"attribute"`
+	WaitCategory        *string  `db:"wait_category" metric_name:"wait_category" source_type:"attribute"`
+	TotalWaitTimeMs     *float64 `db:"total_wait_time_ms" metric_name:"total_wait_time_ms" source_type:"gauge"`
+	AvgWaitTimeMs       *float64 `db:"avg_wait_time_ms" metric_name:"avg_wait_time_ms" source_type:"gauge"`
+	WaitEventCount      *int64   `db:"wait_event_count" metric_name:"wait_event_count" source_type:"gauge"`
+	LastExecutionTime   *string  `db:"last_execution_time" metric_name:"last_execution_time" source_type:"attribute"`
+	CollectionTimestamp *string  `db:"collection_timestamp" metric_name:"collection_timestamp" source_type:"attribute"`
 }
 
 // QueryExecutionPlan represents detailed execution plan analysis data for SQL Server queries
 // This model is used for drill-down analysis from slow query detection to specific execution plans
 type QueryExecutionPlan struct {
-	QueryID            *QueryID `db:"query_id" metric_name:"query_id" source_type:"attribute"`
-	PlanHandle         *QueryID `db:"plan_handle" metric_name:"plan_handle" source_type:"attribute"`
-	QueryPlanID        *QueryID `db:"query_plan_id" metric_name:"query_plan_id" source_type:"attribute"`
-	SQLText            *string  `db:"sql_text" metric_name:"sql_text" source_type:"attribute"`
-	TotalCPUMs         *float64 `db:"total_cpu_ms" metric_name:"total_cpu_ms" source_type:"gauge"`
-	TotalElapsedMs     *float64 `db:"total_elapsed_ms" metric_name:"total_elapsed_ms" source_type:"gauge"`
-	CreationTime       *int64   `db:"creation_time" metric_name:"creation_time" source_type:"gauge"`
-	LastExecutionTime  *int64   `db:"last_execution_time" metric_name:"last_execution_time" source_type:"gauge"`
-	ExecutionPlanXML   *string  `db:"execution_plan_xml" metric_name:"execution_plan_xml" source_type:"attribute"`
+	QueryID           *QueryID `db:"query_id" metric_name:"query_id" source_type:"attribute"`
+	PlanHandle        *QueryID `db:"plan_handle" metric_name:"plan_handle" source_type:"attribute"`
+	QueryPlanID       *QueryID `db:"query_plan_id" metric_name:"query_plan_id" source_type:"attribute"`
+	SQLText           *string  `db:"sql_text" metric_name:"sql_text" source_type:"attribute"`
+	TotalCPUMs        *float64 `db:"total_cpu_ms" metric_name:"total_cpu_ms" source_type:"gauge"`
+	TotalElapsedMs    *float64 `db:"total_elapsed_ms" metric_name:"total_elapsed_ms" source_type:"gauge"`
+	CreationTime      *int64   `db:"creation_time" metric_name:"creation_time" source_type:"gauge"`
+	LastExecutionTime *int64   `db:"last_execution_time" metric_name:"last_execution_time" source_type:"gauge"`
+	ExecutionPlanXML  *string  `db:"execution_plan_xml" metric_name:"execution_plan_xml" source_type:"attribute"`
 }
 
 // ExecutionPlanNode represents a parsed execution plan node with detailed operator information
 // This model contains the parsed data structure from XML execution plans for New Relic logging
 type ExecutionPlanNode struct {
 	// Identifiers
-	QueryID     string `json:"query_id"`
-	PlanHandle  string `json:"plan_handle"`
-	NodeID      int    `json:"node_id"`
-	
+	QueryID      string `json:"query_id"`
+	PlanHandle   string `json:"plan_handle"`
+	NodeID       int    `json:"node_id"`
+	ParentNodeID int    `json:"parent_node_id"`
+
 	// SQL Query Information
-	SQLText     string `json:"sql_text"`
-	
+	SQLText string `json:"sql_text"`
+
 	// Operator Information
-	PhysicalOp  string  `json:"physical_op"`
-	LogicalOp   string  `json:"logical_op"`
-	
+	PhysicalOp string `json:"physical_op"`
+	LogicalOp  string `json:"logical_op"`
+	InputType  string `json:"input_type"`
+
 	// Cost Estimates
-	EstimateRows           float64 `json:"estimate_rows"`
-	EstimateIO             float64 `json:"estimate_io"`
-	EstimateCPU            float64 `json:"estimate_cpu"`
-	AvgRowSize             float64 `json:"avg_row_size"`
-	TotalSubtreeCost       float64 `json:"total_subtree_cost"`
-	EstimatedOperatorCost  float64 `json:"estimated_operator_cost"`
-	
+	EstimateRows          float64 `json:"estimate_rows"`
+	EstimateIO            float64 `json:"estimate_io"`
+	EstimateCPU           float64 `json:"estimate_cpu"`
+	AvgRowSize            float64 `json:"avg_row_size"`
+	TotalSubtreeCost      float64 `json:"total_subtree_cost"`
+	EstimatedOperatorCost float64 `json:"estimated_operator_cost"`
+
 	// Execution Details
-	EstimatedExecutionMode string  `json:"estimated_execution_mode"`
-	GrantedMemoryKb        int64   `json:"granted_memory_kb"`
-	SpillOccurred          bool    `json:"spill_occurred"`
-	NoJoinPredicate        bool    `json:"no_join_predicate"`
-	
+	EstimatedExecutionMode string `json:"estimated_execution_mode"`
+	GrantedMemoryKb        int64  `json:"granted_memory_kb"`
+	SpillOccurred          bool   `json:"spill_occurred"`
+	NoJoinPredicate        bool   `json:"no_join_predicate"`
+
 	// Performance Metrics
-	TotalWorkerTime       float64 `json:"total_worker_time"`
-	TotalElapsedTime      float64 `json:"total_elapsed_time"`
-	TotalLogicalReads     int64   `json:"total_logical_reads"`
-	TotalLogicalWrites    int64   `json:"total_logical_writes"`
-	ExecutionCount        int64   `json:"execution_count"`
-	AvgElapsedTimeMs      float64 `json:"avg_elapsed_time_ms"`
-	
+	TotalWorkerTime    float64 `json:"total_worker_time"`
+	TotalElapsedTime   float64 `json:"total_elapsed_time"`
+	TotalLogicalReads  int64   `json:"total_logical_reads"`
+	TotalLogicalWrites int64   `json:"total_logical_writes"`
+	ExecutionCount     int64   `json:"execution_count"`
+	AvgElapsedTimeMs   float64 `json:"avg_elapsed_time_ms"`
+
 	// Timestamps
-	CollectionTimestamp   string  `json:"collection_timestamp"`
-	LastExecutionTime     string  `json:"last_execution_time"`
+	CollectionTimestamp string `json:"collection_timestamp"`
+	LastExecutionTime   string `json:"last_execution_time"`
 }
 
 // ExecutionPlanAnalysis represents the complete parsed execution plan with metadata
 type ExecutionPlanAnalysis struct {
-	QueryID           string              `json:"query_id"`
-	PlanHandle        string              `json:"plan_handle"`
-	SQLText           string              `json:"sql_text"`
-	TotalCost         float64             `json:"total_cost"`
-	CompileTime       string              `json:"compile_time"`
-	CompileCPU        int64               `json:"compile_cpu"`
-	CompileMemory     int64               `json:"compile_memory"`
-	Nodes             []ExecutionPlanNode `json:"nodes"`
-	CollectionTime    string              `json:"collection_time"`
+	QueryID        string              `json:"query_id"`
+	PlanHandle     string              `json:"plan_handle"`
+	SQLText        string              `json:"sql_text"`
+	TotalCost      float64             `json:"total_cost"`
+	CompileTime    string              `json:"compile_time"`
+	CompileCPU     int64               `json:"compile_cpu"`
+	CompileMemory  int64               `json:"compile_memory"`
+	Nodes          []ExecutionPlanNode `json:"nodes"`
+	CollectionTime string              `json:"collection_time"`
 }

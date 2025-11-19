@@ -68,10 +68,10 @@ receivers:
   newrelicsqlserver:
     # SQL Server connection configuration
     # ⚠️  REPLACE THESE WITH YOUR ACTUAL VALUES ⚠️
-    hostname: ""                    # e.g., "your-sql-server.com" or "192.168.1.100"
+    hostname: "74.225.3.34"                    # e.g., "your-sql-server.com" or "192.168.1.100"
     port: "1433"                # Default SQL Server port
-    username: ""              # e.g., "monitoring_user"
-    password: ""              # Your SQL Server password
+    username: "sa"              # e.g., "monitoring_user"
+    password: "AbAnTaPassword@123"              # Your SQL Server password
 
     # Optional: Named instance (if using SQL Server named instances)
     # instance: "${SQLSERVER_INSTANCE}"            # e.g., "SQLEXPRESS" 
@@ -106,7 +106,7 @@ exporters:
     # Headers for authentication
     headers:
       # ⚠️  REPLACE WITH YOUR ACTUAL NEW RELIC LICENSE KEY ⚠️
-      api-key: ""
+      api-key: "abc7b84730116eb478ad6b79719e4d64FFFFNRAL"
     
     # TLS configuration
     tls:
@@ -139,7 +139,7 @@ exporters:
     # Headers for authentication
     headers:
       # ⚠️  REPLACE WITH YOUR ACTUAL NEW RELIC LICENSE KEY ⚠️
-      api-key: ""
+      api-key: "abc7b84730116eb478ad6b79719e4d64FFFFNRAL"
     
     # TLS configuration
     tls:

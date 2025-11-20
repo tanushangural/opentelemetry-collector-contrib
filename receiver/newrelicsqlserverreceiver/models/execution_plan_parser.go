@@ -6,7 +6,6 @@ package models
 import (
 	"encoding/xml"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -289,8 +288,6 @@ func parseRelOpRecursively(relOp *RelOp, analysis *ExecutionPlanAnalysis, queryI
 	currentNodeID := *nodeID
 
 	// Debug logging to track recursion
-	log.Printf("DEBUG: Processing node %d (parent: %d) - PhysicalOp: %s, InputType: %s, Children: %d, OneSide: %v, OtherSide: %v",
-		currentNodeID, parentNodeID, relOp.PhysicalOp, incomingInputType, len(relOp.RelOp), relOp.OneSide != nil, relOp.OtherSide != nil)
 	node := ExecutionPlanNode{
 		QueryID:                queryID,
 		PlanHandle:             planHandle,

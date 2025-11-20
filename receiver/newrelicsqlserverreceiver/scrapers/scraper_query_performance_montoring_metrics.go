@@ -285,7 +285,7 @@ func (s *QueryPerformanceScraper) processSlowQueryMetrics(result models.SlowQuer
 		}
 		return fields
 	}
-
+    
 	// Create avg_cpu_time_ms metric - CARDINALITY SAFE
 	if result.AvgCPUTimeMS != nil {
 		metric := scopeMetrics.Metrics().AppendEmpty()

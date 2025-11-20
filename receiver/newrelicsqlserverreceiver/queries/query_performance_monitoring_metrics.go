@@ -356,10 +356,6 @@ WITH StatementDetails AS (
 		qs.last_execution_time >= DATEADD(SECOND, -@IntervalSeconds, GETUTCDATE())
 		AND qs.execution_count > 0
 		AND pa.attribute = 'dbid'
-		AND DB_NAME(CONVERT(INT, pa.value)) NOT IN ('master', 'model', 'msdb', 'tempdb')
-		AND qt.text NOT LIKE '%%sys.%%'
-		AND qt.text NOT LIKE '%%INFORMATION_SCHEMA%%'
-		AND qt.text NOT LIKE '%%schema_name()%%'
 		AND qt.text IS NOT NULL
 		AND LTRIM(RTRIM(qt.text)) <> ''
 		AND EXISTS (

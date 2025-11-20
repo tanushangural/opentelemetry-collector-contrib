@@ -125,6 +125,11 @@ func (s *sqlServerScraper) scrapeLogs(ctx context.Context) (plog.Logs, error) {
 	// Create logs collection
 	logs := plog.NewLogs()
 
+	// COMMENTED OUT - Execution plan collection disabled for performance
+	s.logger.Info("Execution plan collection is DISABLED (commented out)")
+	return logs, nil
+
+	/*
 	// Only collect execution plan logs if query monitoring is enabled
 	if !s.config.EnableQueryMonitoring {
 		s.logger.Warn("Query monitoring disabled, skipping execution plan logs collection")
@@ -151,6 +156,7 @@ func (s *sqlServerScraper) scrapeLogs(ctx context.Context) (plog.Logs, error) {
 		zap.Int("resource_logs", logs.ResourceLogs().Len()))
 
 	return logs, nil
+	*/
 }
 
 // collectExecutionPlanData collects execution plan data directly from the database for logs
@@ -706,6 +712,11 @@ func (s *sqlServerScraper) scrape(ctx context.Context) (pmetric.Metrics, error) 
 		elapsedTimeThreshold := s.config.QueryMonitoringResponseTimeThreshold
 		textTruncateLimit := s.config.QueryMonitoringTextTruncateLimit // Use config value
 
+		s.logger.Info("Attempting to scrape slow query metrics",
+			zap.Int("interval_seconds", intervalSeconds),
+			zap.Int("top_n", topN),
+			zap.Int("elapsed_time_threshold", elapsedTimeThreshold))
+
 		if err := s.queryPerformanceScraper.ScrapeSlowQueryMetrics(scrapeCtx, scopeMetrics, intervalSeconds, topN, elapsedTimeThreshold, textTruncateLimit); err != nil {
 			s.logger.Warn("Failed to scrape slow query metrics - continuing with other metrics",
 				zap.Error(err),
@@ -716,12 +727,14 @@ func (s *sqlServerScraper) scrape(ctx context.Context) (pmetric.Metrics, error) 
 				zap.Int("text_truncate_limit", textTruncateLimit))
 			// Don't add to scrapeErrors - just warn and continue
 		} else {
-			s.logger.Debug("Successfully scraped slow query metrics",
+			s.logger.Info("Successfully scraped slow query metrics",
 				zap.Int("interval_seconds", intervalSeconds),
 				zap.Int("top_n", topN),
 				zap.Int("elapsed_time_threshold", elapsedTimeThreshold),
 				zap.Int("text_truncate_limit", textTruncateLimit))
 		}
+	} else {
+		s.logger.Info("Slow query scraping SKIPPED - EnableQueryMonitoring is false")
 	}
 
 	// Scrape wait time analysis metrics if query monitoring is enabled
@@ -748,6 +761,8 @@ func (s *sqlServerScraper) scrape(ctx context.Context) (pmetric.Metrics, error) 
 	}
 
 	// Scrape query execution plan metrics if query monitoring is enabled
+	// COMMENTED OUT - Execution plan collection disabled for performance
+	/*
 	if s.config.EnableQueryMonitoring {
 		scrapeCtx, cancel := context.WithTimeout(ctx, s.config.Timeout)
 		defer cancel()
@@ -776,6 +791,7 @@ func (s *sqlServerScraper) scrape(ctx context.Context) (pmetric.Metrics, error) 
 				zap.Int("text_truncate_limit", textTruncateLimit))
 		}
 	}
+	*/
 
 	// Continue with other SQL Server metrics collection
 	s.logger.Debug("Starting instance buffer pool hit percent metrics scraping")

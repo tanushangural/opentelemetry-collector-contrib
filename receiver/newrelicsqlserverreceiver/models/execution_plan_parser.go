@@ -6,6 +6,7 @@ package models
 import (
 	"encoding/xml"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -86,6 +87,10 @@ type RelOp struct {
 	// Child operators
 	RelOp []RelOp `xml:"RelOp"`
 
+	// Join operator specific children (for NestedLoops, Hash, Merge joins)
+	OneSide   *RelOp `xml:"OneSide>RelOp,omitempty"`
+	OtherSide *RelOp `xml:"OtherSide>RelOp,omitempty"`
+
 	// Operator-specific details
 	RunTimeInformation *RunTimeInformation `xml:"RunTimeInformation,omitempty"`
 	MemoryFractions    *MemoryFractions    `xml:"MemoryFractions,omitempty"`
@@ -93,6 +98,12 @@ type RelOp struct {
 	NestedLoops        *NestedLoops        `xml:"NestedLoops,omitempty"`
 	Hash               *Hash               `xml:"Hash,omitempty"`
 	Sort               *Sort               `xml:"Sort,omitempty"`
+	Filter             *Filter             `xml:"Filter,omitempty"`
+	ComputeScalar      *ComputeScalar      `xml:"ComputeScalar,omitempty"`
+	StreamAggregate    *StreamAggregate    `xml:"StreamAggregate,omitempty"`
+	Merge              *Merge              `xml:"Merge,omitempty"`
+	Concatenation      *Concatenation      `xml:"Concatenation,omitempty"`
+	Parallelism        *Parallelism        `xml:"Parallelism,omitempty"`
 }
 
 // RunTimeInformation contains actual execution statistics
@@ -134,6 +145,7 @@ type IndexScan struct {
 	ScanDirection string   `xml:"ScanDirection,attr"`
 	ForcedIndex   string   `xml:"ForcedIndex,attr"`
 	ForceSeek     string   `xml:"ForceSeek,attr"`
+	RelOp         []RelOp  `xml:"RelOp"` // Child operators
 }
 
 // NestedLoops contains nested loop join details
@@ -141,18 +153,59 @@ type NestedLoops struct {
 	XMLName               xml.Name `xml:"NestedLoops"`
 	Optimized             string   `xml:"Optimized,attr"`
 	WithUnorderedPrefetch string   `xml:"WithUnorderedPrefetch,attr"`
+	RelOp                 []RelOp  `xml:"RelOp"` // Child operators
 }
 
 // Hash contains hash operation details
 type Hash struct {
 	XMLName       xml.Name `xml:"Hash"`
 	BitmapCreator string   `xml:"BitmapCreator,attr"`
+	RelOp         []RelOp  `xml:"RelOp"` // Child operators
 }
 
 // Sort contains sort operation details
 type Sort struct {
 	XMLName  xml.Name `xml:"Sort"`
 	Distinct string   `xml:"Distinct,attr"`
+	RelOp    []RelOp  `xml:"RelOp"` // Child operators
+}
+
+// Filter contains filter operation details
+type Filter struct {
+	XMLName xml.Name `xml:"Filter"`
+	RelOp   []RelOp  `xml:"RelOp"` // Child operators
+}
+
+// ComputeScalar contains compute scalar operation details
+type ComputeScalar struct {
+	XMLName xml.Name `xml:"ComputeScalar"`
+	RelOp   []RelOp  `xml:"RelOp"` // Child operators
+}
+
+// StreamAggregate contains stream aggregate operation details
+type StreamAggregate struct {
+	XMLName xml.Name `xml:"StreamAggregate"`
+	RelOp   []RelOp  `xml:"RelOp"` // Child operators
+}
+
+// Merge contains merge operation details
+type Merge struct {
+	XMLName   xml.Name `xml:"Merge"`
+	InnerSide string   `xml:"InnerSide,attr"`
+	RelOp     []RelOp  `xml:"RelOp"` // Child operators
+}
+
+// Concatenation contains concatenation operation details
+type Concatenation struct {
+	XMLName xml.Name `xml:"Concatenation"`
+	RelOp   []RelOp  `xml:"RelOp"` // Child operators
+}
+
+// Parallelism contains parallelism operation details
+type Parallelism struct {
+	XMLName        xml.Name `xml:"Parallelism"`
+	PartitionCount string   `xml:"PartitionCount,attr"`
+	RelOp          []RelOp  `xml:"RelOp"` // Child operators
 }
 
 // ParameterList contains query parameters
@@ -219,7 +272,7 @@ func ParseExecutionPlanXML(planXML string, queryID, planHandle string) (*Executi
 
 			// Parse operators recursively
 			nodeID := 0
-			parseRelOpRecursively(&queryPlan.RelOp, analysis, queryID, planHandle, &nodeID)
+			parseRelOpRecursively(&queryPlan.RelOp, analysis, queryID, planHandle, &nodeID, -1, "Root")
 		}
 	}
 
@@ -227,16 +280,23 @@ func ParseExecutionPlanXML(planXML string, queryID, planHandle string) (*Executi
 }
 
 // parseRelOpRecursively recursively parses relational operators in the execution plan
-func parseRelOpRecursively(relOp *RelOp, analysis *ExecutionPlanAnalysis, queryID, planHandle string, nodeID *int) {
+func parseRelOpRecursively(relOp *RelOp, analysis *ExecutionPlanAnalysis, queryID, planHandle string, nodeID *int, parentNodeID int, incomingInputType string) {
 	if relOp == nil {
 		return
 	}
 
 	*nodeID++
+	currentNodeID := *nodeID
+
+	// Debug logging to track recursion
+	log.Printf("DEBUG: Processing node %d (parent: %d) - PhysicalOp: %s, InputType: %s, Children: %d, OneSide: %v, OtherSide: %v",
+		currentNodeID, parentNodeID, relOp.PhysicalOp, incomingInputType, len(relOp.RelOp), relOp.OneSide != nil, relOp.OtherSide != nil)
 	node := ExecutionPlanNode{
 		QueryID:                queryID,
 		PlanHandle:             planHandle,
-		NodeID:                 relOp.NodeId,
+		NodeID:                 currentNodeID,
+		ParentNodeID:           parentNodeID,
+		InputType:              incomingInputType,
 		SQLText:                analysis.SQLText,
 		PhysicalOp:             relOp.PhysicalOp,
 		LogicalOp:              relOp.LogicalOp,
@@ -290,9 +350,70 @@ func parseRelOpRecursively(relOp *RelOp, analysis *ExecutionPlanAnalysis, queryI
 
 	analysis.Nodes = append(analysis.Nodes, node)
 
-	// Recursively parse child operators
+	// Recursively parse child operators based on their position/role
+	// Handle join operators with explicit left/right sides
+	if relOp.OneSide != nil {
+		parseRelOpRecursively(relOp.OneSide, analysis, queryID, planHandle, nodeID, currentNodeID, "LeftInput")
+	}
+	if relOp.OtherSide != nil {
+		parseRelOpRecursively(relOp.OtherSide, analysis, queryID, planHandle, nodeID, currentNodeID, "RightInput")
+	}
+
+	// Handle generic child operators (for single-input operators like Compute Scalar, Filter, Sort, etc.)
 	for i := range relOp.RelOp {
-		parseRelOpRecursively(&relOp.RelOp[i], analysis, queryID, planHandle, nodeID)
+		parseRelOpRecursively(&relOp.RelOp[i], analysis, queryID, planHandle, nodeID, currentNodeID, "Input")
+	}
+
+	// Handle children nested inside operator-specific structures
+	if relOp.NestedLoops != nil {
+		for i := range relOp.NestedLoops.RelOp {
+			parseRelOpRecursively(&relOp.NestedLoops.RelOp[i], analysis, queryID, planHandle, nodeID, currentNodeID, "Input")
+		}
+	}
+	if relOp.Hash != nil {
+		for i := range relOp.Hash.RelOp {
+			parseRelOpRecursively(&relOp.Hash.RelOp[i], analysis, queryID, planHandle, nodeID, currentNodeID, "Input")
+		}
+	}
+	if relOp.Sort != nil {
+		for i := range relOp.Sort.RelOp {
+			parseRelOpRecursively(&relOp.Sort.RelOp[i], analysis, queryID, planHandle, nodeID, currentNodeID, "Input")
+		}
+	}
+	if relOp.IndexScan != nil {
+		for i := range relOp.IndexScan.RelOp {
+			parseRelOpRecursively(&relOp.IndexScan.RelOp[i], analysis, queryID, planHandle, nodeID, currentNodeID, "Input")
+		}
+	}
+	if relOp.Filter != nil {
+		for i := range relOp.Filter.RelOp {
+			parseRelOpRecursively(&relOp.Filter.RelOp[i], analysis, queryID, planHandle, nodeID, currentNodeID, "Input")
+		}
+	}
+	if relOp.ComputeScalar != nil {
+		for i := range relOp.ComputeScalar.RelOp {
+			parseRelOpRecursively(&relOp.ComputeScalar.RelOp[i], analysis, queryID, planHandle, nodeID, currentNodeID, "Input")
+		}
+	}
+	if relOp.StreamAggregate != nil {
+		for i := range relOp.StreamAggregate.RelOp {
+			parseRelOpRecursively(&relOp.StreamAggregate.RelOp[i], analysis, queryID, planHandle, nodeID, currentNodeID, "Input")
+		}
+	}
+	if relOp.Merge != nil {
+		for i := range relOp.Merge.RelOp {
+			parseRelOpRecursively(&relOp.Merge.RelOp[i], analysis, queryID, planHandle, nodeID, currentNodeID, "Input")
+		}
+	}
+	if relOp.Concatenation != nil {
+		for i := range relOp.Concatenation.RelOp {
+			parseRelOpRecursively(&relOp.Concatenation.RelOp[i], analysis, queryID, planHandle, nodeID, currentNodeID, "Input")
+		}
+	}
+	if relOp.Parallelism != nil {
+		for i := range relOp.Parallelism.RelOp {
+			parseRelOpRecursively(&relOp.Parallelism.RelOp[i], analysis, queryID, planHandle, nodeID, currentNodeID, "Input")
+		}
 	}
 }
 

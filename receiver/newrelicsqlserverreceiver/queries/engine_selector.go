@@ -1,8 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package queries provides the EngineSet pattern for SQL Server engine-specific query selection.
-// This file implements the generic EngineSet structure that allows different query sets
 // based on the SQL Server engine edition (Default, Azure SQL Database, Azure SQL Managed Instance).
 //
 // EngineSet Pattern Implementation:

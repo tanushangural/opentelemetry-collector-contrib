@@ -1,54 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package scrapers provides the database principals metrics scraper for SQL Server.
-// This file implements comprehensive collection of database security principals metrics
-// including users, roles, and security-related statistics.
-//
-// Database Principals Metrics Overview:
-//
-// Database principals represent security entities within a SQL Server database that
-// can be granted permissions to access database objects. This scraper collects:
-//
-// 1. Individual Principal Metrics:
-//   - Principal Name: The name of each user, role, or security entity
-//   - Principal Type: The type of principal (SQL_USER, WINDOWS_USER, DATABASE_ROLE, etc.)
-//   - Creation Date: When each principal was created for lifecycle tracking
-//
-// 2. Aggregate Principal Statistics:
-//   - Total Principals: Count of all non-system principals in the database
-//   - User Count: Count of all database users (various authentication types)
-//   - Role Count: Count of custom database roles and application roles
-//   - Type-Specific Counts: Detailed breakdown by authentication type
-//
-// 3. Principal Activity Metrics:
-//   - Recently Created: Principals created in the last 30 days
-//   - Old Principals: Principals created more than 1 year ago
-//   - Orphaned Users: SQL users without corresponding server logins
-//
-// Security and Compliance Value:
-// - Audit database access control configuration
-// - Monitor user and role lifecycle changes
-// - Identify potential security risks (orphaned accounts)
-// - Support compliance reporting for database access
-// - Track application-specific role usage
-//
-// Query Optimization:
-// - Excludes system fixed roles and internal principals
-// - Uses efficient sys.database_principals catalog view
-// - Minimizes data transfer with targeted column selection
-// - Supports batching for multi-database environments
-//
-// Engine Compatibility:
-// - Standard SQL Server: Full access to all principal types and metadata
-// - Azure SQL Database: Database-scoped principals with full feature support
-// - Azure SQL Managed Instance: Complete functionality with enterprise features
-//
-// Based on User Requirements:
-// This implementation extends the provided query for comprehensive monitoring:
-// "SELECT name AS principal_name, type_desc, create_date FROM sys.database_principals
-//
-//	WHERE is_fixed_role = 0 AND type <> 'X' ORDER BY type_desc, principal_name"
 package scrapers
 
 import (

@@ -1,24 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package scrapers provides the database role membership metrics scraper for SQL Server.
-// This file implements comprehensive collection of database role membership information
-// to provide visibility into access control structures within databases.
-//
-// Database Role Membership Scraper Overview:
-//
-// Database role membership is a critical component of SQL Server security architecture.
-// This scraper extracts role-member relationships from system catalog views to provide
-// monitoring capabilities for database security auditing and compliance.
-//
-// Based on User Requirements:
-// This implementation uses the provided query for role membership monitoring:
-// "SELECT roles.name AS role_name, members.name AS member_name
-//
-//	FROM sys.database_role_members AS drm
-//	JOIN sys.database_principals AS roles ON drm.role_principal_id = roles.principal_id
-//	JOIN sys.database_principals AS members ON drm.member_principal_id = members.principal_id
-//	ORDER BY role_name, member_name;"
 package scrapers
 
 import (

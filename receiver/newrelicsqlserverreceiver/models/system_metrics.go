@@ -1,8 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package models provides data structures for system-level metrics and information.
-// This file defines the data models used to represent SQL Server system and host information
 // that is automatically collected and added as resource attributes to all metrics.
 package models
 

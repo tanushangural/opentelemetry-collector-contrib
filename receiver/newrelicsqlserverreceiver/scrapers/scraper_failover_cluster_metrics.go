@@ -1,58 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package scrapers provides the failover cluster-level metrics scraper for SQL Server.
-// This file implements collection of SQL Server Always On Availability Group replica
-// performance metrics for high availability failover cluster deployments.
-//
-// Failover Cluster-Level Metrics:
-//
-// 1. Database Replica Performance Metrics:
-//   - Log Bytes Received/sec: Rate of log records received by secondary replica from primary
-//   - Transaction Delay: Average delay for transactions on the secondary replica
-//   - Flow Control Time (ms/sec): Time spent in flow control by log records from primary
-//
-// Detailed Metric Descriptions:
-//
-// Log Bytes Received/sec:
-// - Source: sys.dm_os_performance_counters for Database Replica counters
-// - Purpose: Measures replication throughput from primary to secondary replica
-// - Unit: Bytes per second
-// - Critical for: Monitoring replication performance and network throughput
-//
-// Transaction Delay:
-// - Source: sys.dm_os_performance_counters for Database Replica counters
-// - Purpose: Indicates lag in transaction processing on secondary replica
-// - Unit: Milliseconds
-// - Critical for: Identifying replication delays and performance bottlenecks
-//
-// Flow Control Time (ms/sec):
-// - Source: sys.dm_os_performance_counters for Database Replica counters
-// - Purpose: Measures time spent waiting for flow control from primary replica
-// - Unit: Milliseconds per second
-// - Critical for: Understanding log send/receive throttling behavior
-//
-// Scraper Structure:
-//
-//	type FailoverClusterScraper struct {
-//	    connection    SQLConnectionInterface
-//	    logger        *zap.Logger
-//	    startTime     pcommon.Timestamp
-//	    engineEdition int
-//	}
-//
-// Data Sources:
-// - sys.dm_os_performance_counters: Always On Database Replica performance counters
-//
-// Engine-Specific Considerations:
-// - Standard SQL Server: Full failover cluster metrics support for Always On AG
-// - Azure SQL Database: Not applicable (no Always On AG support)
-// - Azure SQL Managed Instance: Limited support (managed HA service)
-//
-// Availability:
-// - Only available on SQL Server instances with Always On Availability Groups enabled
-// - Returns empty result set on instances without Always On AG configuration
-// - Requires appropriate permissions to query performance counter DMVs
 package scrapers
 
 import (

@@ -19,7 +19,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/newrelicsqlserverreceiver/scrapers"
 )
 
-// sqlServerScraper handles SQL Server metrics collection following nri-mssql patterns
+// sqlServerScraper handles SQL Server metrics collection
 type sqlServerScraper struct {
 	connection              *SQLConnection
 	config                  *Config
@@ -51,7 +51,7 @@ func newSqlServerScraper(settings receiver.Settings, cfg *Config) *sqlServerScra
 
 // start initializes the scraper and establishes database connection
 func (s *sqlServerScraper) start(ctx context.Context, _ component.Host) error {
-	s.logger.Info("Starting New Relic SQL Server receiver")
+	s.logger.Info("Starting SQL Server receiver")
 
 	connection, err := NewSQLConnection(ctx, s.config, s.logger)
 	if err != nil {
@@ -66,7 +66,7 @@ func (s *sqlServerScraper) start(ctx context.Context, _ component.Host) error {
 		return err
 	}
 
-	// Get EngineEdition (following nri-mssql pattern)
+	// Get EngineEdition
 	s.engineEdition = 0 // Default to 0 (Unknown)
 	s.engineEdition, err = s.detectEngineEdition(ctx)
 	if err != nil {
@@ -132,14 +132,14 @@ func (s *sqlServerScraper) start(ctx context.Context, _ component.Host) error {
 
 // shutdown closes the database connection
 func (s *sqlServerScraper) shutdown(ctx context.Context) error {
-	s.logger.Info("Shutting down New Relic SQL Server receiver")
+	s.logger.Info("Shutting down SQL Server receiver")
 	if s.connection != nil {
 		s.connection.Close()
 	}
 	return nil
 }
 
-// detectEngineEdition detects the SQL Server engine edition following nri-mssql pattern
+// detectEngineEdition detects the SQL Server engine edition
 func (s *sqlServerScraper) detectEngineEdition(ctx context.Context) (int, error) {
 	queryFunc := func(query string) (int, error) {
 		var results []struct {
@@ -420,7 +420,7 @@ func (s *sqlServerScraper) scrape(ctx context.Context) (pmetric.Metrics, error) 
 		intervalSeconds := s.config.QueryMonitoringFetchInterval
 		topN := s.config.QueryMonitoringCountThreshold
 		elapsedTimeThreshold := s.config.QueryMonitoringResponseTimeThreshold
-		textTruncateLimit := 4094 // Default text truncate limit from nri-mssql
+		textTruncateLimit := 4094 // Default text truncate limit
 
 		if err := s.queryPerformanceScraper.ScrapeSlowQueryMetrics(scrapeCtx, scopeMetrics, intervalSeconds, topN, elapsedTimeThreshold, textTruncateLimit); err != nil {
 			s.logger.Warn("Failed to scrape slow query metrics - continuing with other metrics",
@@ -446,7 +446,7 @@ func (s *sqlServerScraper) scrape(ctx context.Context) (pmetric.Metrics, error) 
 
 		// Use config values for wait analysis parameters
 		topN := s.config.QueryMonitoringCountThreshold
-		textTruncateLimit := 4094 // Default text truncate limit from nri-mssql
+		textTruncateLimit := 4094 // Default text truncate limit
 
 		if err := s.queryPerformanceScraper.ScrapeWaitTimeAnalysisMetrics(scrapeCtx, scopeMetrics, topN, textTruncateLimit); err != nil {
 			s.logger.Warn("Failed to scrape wait time analysis metrics - continuing with other metrics",

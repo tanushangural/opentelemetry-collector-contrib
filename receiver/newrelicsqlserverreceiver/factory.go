@@ -16,7 +16,7 @@ import (
 	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/newrelicsqlserverreceiver/internal/metadata"
 )
 
-// NewFactory creates a factory for New Relic SQL Server receiver.
+// NewFactory creates a factory for SQL Server receiver.
 func NewFactory() receiver.Factory {
 	return receiver.NewFactory(
 		metadata.Type,

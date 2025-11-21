@@ -4,7 +4,6 @@
 package queries
 
 // LockResourceQuery returns lock analysis focused on resource types (what's being locked)
-// This query provides visibility into lock granularity patterns across different resource types
 const LockResourceQuery = `
 SELECT 
     DB_NAME(tl.resource_database_id) AS database_name,
@@ -28,7 +27,6 @@ HAVING COUNT(*) > 0
 ORDER BY total_active_locks DESC`
 
 // LockModeQuery returns lock analysis focused on lock modes (how resources are being locked)
-// This query provides visibility into lock behavior patterns and contention types
 const LockModeQuery = `
 SELECT 
     DB_NAME(tl.resource_database_id) AS database_name,

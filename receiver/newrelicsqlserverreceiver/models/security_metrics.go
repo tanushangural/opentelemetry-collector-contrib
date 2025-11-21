@@ -1,8 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package models provides data structures for security-level metrics and monitoring.
-// This file defines the data models used to represent SQL Server security-level performance data
 // including server principals, role membership, and authentication patterns.
 //
 // Security-Level Data Structures:

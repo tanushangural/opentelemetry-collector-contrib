@@ -1,29 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package scrapers provides the lock metrics scraper for SQL Server.
-// This file implements lock analysis metrics collection for understanding
-// SQL Server locking behavior patterns and potential performance issues.
-//
-// Lock Analysis Metrics (2 categories):
-//
-// 1. Lock Resource Metrics:
-//   - What resources are being locked (table, page, row, key, etc.)
-//   - Helps understand lock granularity patterns
-//   - Metrics: sqlserver.lock.resource.*
-//
-// 2. Lock Mode Metrics:
-//   - How resources are being locked (shared, exclusive, intent, etc.)
-//   - Helps understand lock behavior and contention patterns
-//   - Metrics: sqlserver.lock.mode.*
-//
-// Data Source:
-// - sys.dm_tran_locks: Current lock information
-//
-// Engine-Specific Considerations:
-// - Azure SQL Database: Fully supported with database-scoped view
-// - Azure SQL Managed Instance: Full functionality available
-// - Standard SQL Server: Complete access to all lock DMVs
 package scrapers
 
 import (

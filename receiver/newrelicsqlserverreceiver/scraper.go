@@ -30,7 +30,7 @@ type sqlServerScraper struct {
 	settings                receiver.Settings
 	instanceScraper         *scrapers.InstanceScraper
 	queryPerformanceScraper *scrapers.QueryPerformanceScraper
-	//slowQueryScraper  *scrapers.SlowQueryScraper
+	// slowQueryScraper  *scrapers.SlowQueryScraper
 	databaseScraper               *scrapers.DatabaseScraper
 	userConnectionScraper         *scrapers.UserConnectionScraper
 	failoverClusterScraper        *scrapers.FailoverClusterScraper
@@ -95,7 +95,7 @@ func (s *sqlServerScraper) start(ctx context.Context, _ component.Host) error {
 
 	// Initialize query performance scraper for blocking sessions and performance monitoring
 	s.queryPerformanceScraper = scrapers.NewQueryPerformanceScraper(s.connection, s.logger, s.engineEdition)
-	//s.slowQueryScraper = scrapers.NewSlowQueryScraper(s.logger, s.connection)
+	// s.slowQueryScraper = scrapers.NewSlowQueryScraper(s.logger, s.connection)
 
 	// Initialize user connection scraper for user connection and authentication metrics
 	s.userConnectionScraper = scrapers.NewUserConnectionScraper(s.connection, s.logger, s.engineEdition)
@@ -125,11 +125,6 @@ func (s *sqlServerScraper) scrapeLogs(ctx context.Context) (plog.Logs, error) {
 	// Create logs collection
 	logs := plog.NewLogs()
 
-	// COMMENTED OUT - Execution plan collection disabled for performance
-	s.logger.Info("Execution plan collection is DISABLED (commented out)")
-	return logs, nil
-
-	/*
 	// Only collect execution plan logs if query monitoring is enabled
 	if !s.config.EnableQueryMonitoring {
 		s.logger.Warn("Query monitoring disabled, skipping execution plan logs collection")
@@ -156,7 +151,6 @@ func (s *sqlServerScraper) scrapeLogs(ctx context.Context) (plog.Logs, error) {
 		zap.Int("resource_logs", logs.ResourceLogs().Len()))
 
 	return logs, nil
-	*/
 }
 
 // collectExecutionPlanData collects execution plan data directly from the database for logs
@@ -737,32 +731,47 @@ func (s *sqlServerScraper) scrape(ctx context.Context) (pmetric.Metrics, error) 
 		s.logger.Info("Slow query scraping SKIPPED - EnableQueryMonitoring is false")
 	}
 
-	// Scrape wait time analysis metrics if query monitoring is enabled
-	if s.config.EnableQueryMonitoring {
+	// Scrape active running queries metrics if enabled
+	if s.config.EnableActiveRunningQueries {
 		scrapeCtx, cancel := context.WithTimeout(ctx, s.config.Timeout)
 		defer cancel()
 
-		// Use config values for wait analysis parameters
-		topN := s.config.QueryMonitoringCountThreshold
-		textTruncateLimit := s.config.QueryMonitoringTextTruncateLimit // Use config value
+		// Use config values for active running queries parameters
+		limit := s.config.QueryMonitoringCountThreshold // Reuse count threshold for active queries limit
+		textTruncateLimit := s.config.QueryMonitoringTextTruncateLimit
 
-		if err := s.queryPerformanceScraper.ScrapeWaitTimeAnalysisMetrics(scrapeCtx, scopeMetrics, topN, textTruncateLimit); err != nil {
-			s.logger.Warn("Failed to scrape wait time analysis metrics - continuing with other metrics",
+		s.logger.Info("Attempting to scrape active running queries metrics",
+			zap.Int("limit", limit),
+			zap.Int("text_truncate_limit", textTruncateLimit))
+
+		if err := s.queryPerformanceScraper.ScrapeActiveRunningQueriesMetrics(scrapeCtx, scopeMetrics, limit, textTruncateLimit); err != nil {
+			s.logger.Warn("Failed to scrape active running queries metrics - continuing with other metrics",
 				zap.Error(err),
 				zap.Duration("timeout", s.config.Timeout),
-				zap.Int("top_n", topN),
+				zap.Int("limit", limit),
 				zap.Int("text_truncate_limit", textTruncateLimit))
-			// Don't add to scrapeErrors - just warn and continue with other metrics
+			// Don't add to scrapeErrors - just warn and continue
 		} else {
-			s.logger.Debug("Successfully scraped wait time analysis metrics",
-				zap.Int("top_n", topN),
+			s.logger.Info("Successfully scraped active running queries metrics",
+				zap.Int("limit", limit),
 				zap.Int("text_truncate_limit", textTruncateLimit))
 		}
+	} else {
+		s.logger.Info("Active running queries scraping SKIPPED - EnableActiveRunningQueries is false")
 	}
 
+	// Scrape wait time analysis metrics if query monitoring is enabled
+	// REMOVED: Query monitoring wait analysis block (used Query Store views)
+	// This functionality has been replaced by the new active query monitoring approach
+	// which gets wait information directly from sys.dm_exec_requests
+	//
+	// if s.config.EnableQueryMonitoring {
+	//     scrapeCtx, cancel := context.WithTimeout(ctx, s.config.Timeout)
+	//     defer cancel()
+	//     ... ScrapeWaitTimeAnalysisMetrics call ...
+	// }
+
 	// Scrape query execution plan metrics if query monitoring is enabled
-	// COMMENTED OUT - Execution plan collection disabled for performance
-	/*
 	if s.config.EnableQueryMonitoring {
 		scrapeCtx, cancel := context.WithTimeout(ctx, s.config.Timeout)
 		defer cancel()
@@ -791,7 +800,6 @@ func (s *sqlServerScraper) scrape(ctx context.Context) (pmetric.Metrics, error) 
 				zap.Int("text_truncate_limit", textTruncateLimit))
 		}
 	}
-	*/
 
 	// Continue with other SQL Server metrics collection
 	s.logger.Debug("Starting instance buffer pool hit percent metrics scraping")

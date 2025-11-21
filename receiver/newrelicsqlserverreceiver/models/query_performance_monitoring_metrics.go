@@ -127,6 +127,7 @@ type SlowQuery struct {
 	AvgDiskReads           *float64 `db:"avg_disk_reads" metric_name:"sqlserver.slowquery.avg_disk_reads" source_type:"gauge"`
 	AvgDiskWrites          *float64 `db:"avg_disk_writes" metric_name:"sqlserver.slowquery.avg_disk_writes" source_type:"gauge"`
 	AvgRowsProcessed       *float64 `db:"avg_rows_processed" metric_name:"sqlserver.slowquery.rows_processed" source_type:"gauge"`
+	AvgLockWaitTimeMs      *float64 `db:"avg_lock_wait_time_ms" metric_name:"sqlserver.slowquery.avg_lock_wait_time_ms" source_type:"gauge"`
 	StatementType          *string  `db:"statement_type" metric_name:"sqlserver.slowquery.statement_type" source_type:"attribute"`
 	CollectionTimestamp    *string  `db:"collection_timestamp" metric_name:"collection_timestamp" source_type:"attribute"`
 }
@@ -228,4 +229,73 @@ type ExecutionPlanAnalysis struct {
 	CompileMemory  int64               `json:"compile_memory"`
 	Nodes          []ExecutionPlanNode `json:"nodes"`
 	CollectionTime string              `json:"collection_time"`
+}
+
+// ActiveRunningQuery represents currently executing queries with wait and blocking details
+// This model captures real-time execution state from sys.dm_exec_requests
+type ActiveRunningQuery struct {
+	// A. Current Session Details
+	CurrentSessionID *int64  `db:"current_session_id" metric_name:"sqlserver.activequery.session_id" source_type:"gauge"`
+	RequestID        *int64  `db:"request_id" metric_name:"request_id" source_type:"attribute"`
+	DatabaseName     *string `db:"database_name" metric_name:"database_name" source_type:"attribute"`
+	LoginName        *string `db:"login_name" metric_name:"login_name" source_type:"attribute"`
+	HostName         *string `db:"host_name" metric_name:"host_name" source_type:"attribute"`
+	RequestCommand   *string `db:"request_command" metric_name:"request_command" source_type:"attribute"`
+	RequestStatus    *string `db:"request_status" metric_name:"request_status" source_type:"attribute"`
+
+	// B. Wait Details
+	WaitType     *string  `db:"wait_type" metric_name:"wait_type" source_type:"attribute"`
+	WaitTimeS    *float64 `db:"wait_time_s" metric_name:"sqlserver.activequery.wait_time_seconds" source_type:"gauge"`
+	WaitResource *string  `db:"wait_resource" metric_name:"wait_resource" source_type:"attribute"`
+	LastWaitType *string  `db:"last_wait_type" metric_name:"last_wait_type" source_type:"attribute"`
+
+	// C. Performance/Execution Metrics
+	CPUTimeMs               *int64  `db:"cpu_time_ms" metric_name:"sqlserver.activequery.cpu_time_ms" source_type:"gauge"`
+	TotalElapsedTimeMs      *int64  `db:"total_elapsed_time_ms" metric_name:"sqlserver.activequery.elapsed_time_ms" source_type:"gauge"`
+	Reads                   *int64  `db:"reads" metric_name:"sqlserver.activequery.reads" source_type:"gauge"`
+	Writes                  *int64  `db:"writes" metric_name:"sqlserver.activequery.writes" source_type:"gauge"`
+	LogicalReads            *int64  `db:"logical_reads" metric_name:"sqlserver.activequery.logical_reads" source_type:"gauge"`
+	RowCount                *int64  `db:"row_count" metric_name:"sqlserver.activequery.row_count" source_type:"gauge"`
+	GrantedQueryMemoryPages *int64  `db:"granted_query_memory_pages" metric_name:"sqlserver.activequery.granted_query_memory_pages" source_type:"gauge"`
+	RequestStartTime        *string `db:"request_start_time" metric_name:"request_start_time" source_type:"attribute"`
+	CollectionTimestamp     *string `db:"collection_timestamp" metric_name:"collection_timestamp" source_type:"attribute"`
+
+	// D. Blocking Details
+	BlockingSessionID *string `db:"blocking_session_id" metric_name:"blocking_session_id" source_type:"attribute"`
+	BlockerLoginName  *string `db:"blocker_login_name" metric_name:"blocker_login_name" source_type:"attribute"`
+	BlockerHostName   *string `db:"blocker_host_name" metric_name:"blocker_host_name" source_type:"attribute"`
+
+	// E. Query Text
+	QueryStatementText         *string `db:"query_statement_text" metric_name:"query_statement_text" source_type:"attribute"`
+	BlockingQueryStatementText *string `db:"blocking_query_statement_text" metric_name:"blocking_query_statement_text" source_type:"attribute"`
+
+	// F. Plan Handle for conditional execution plan fetching
+	PlanHandle *QueryID `db:"plan_handle" metric_name:"plan_handle" source_type:"attribute"`
+
+	// G. Query ID - SQL Server's native query_hash from dm_exec_query_stats
+	// This is NULL if the query hasn't been cached yet, but enables direct correlation with slow queries
+	QueryID *QueryID `db:"query_id" metric_name:"query_id" source_type:"attribute"`
+}
+
+// LockedObject represents detailed information about database objects locked by a session
+// This model resolves lock resources to actual table/object names for troubleshooting lock contention
+type LockedObject struct {
+	// Session and Database Context
+	SessionID    *int64  `db:"session_id" metric_name:"session_id" source_type:"attribute"`
+	DatabaseName *string `db:"database_name" metric_name:"database_name" source_type:"attribute"`
+
+	// Object Identification
+	SchemaName       *string `db:"schema_name" metric_name:"schema_name" source_type:"attribute"`
+	LockedObjectName *string `db:"locked_object_name" metric_name:"locked_object_name" source_type:"attribute"`
+
+	// Lock Details
+	ResourceType        *string `db:"resource_type" metric_name:"resource_type" source_type:"attribute"`
+	LockGranularity     *string `db:"lock_granularity" metric_name:"lock_granularity" source_type:"attribute"`
+	LockMode            *string `db:"lock_mode" metric_name:"lock_mode" source_type:"attribute"`
+	LockStatus          *string `db:"lock_status" metric_name:"lock_status" source_type:"attribute"`
+	LockRequestType     *string `db:"lock_request_type" metric_name:"lock_request_type" source_type:"attribute"`
+	ResourceDescription *string `db:"resource_description" metric_name:"resource_description" source_type:"attribute"`
+
+	// Metadata
+	CollectionTimestamp *string `db:"collection_timestamp" metric_name:"collection_timestamp" source_type:"attribute"`
 }

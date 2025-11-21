@@ -56,6 +56,8 @@ func TestConfigValidation(t *testing.T) {
 				QueryMonitoringResponseTimeThreshold: 5,
 				QueryMonitoringCountThreshold:        50,
 				QueryMonitoringFetchInterval:         30,
+				QueryMonitoringTextTruncateLimit:     4094,
+				EnableActiveRunningQueries:           true,
 			},
 			wantErr: false,
 		},

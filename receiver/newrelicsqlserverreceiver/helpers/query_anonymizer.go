@@ -1,10 +1,10 @@
 package helpers
+
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
 // Package helpers provides utility functions for SQL Server query processing and anonymization.
 // This file implements comprehensive query text anonymization functionality for privacy and security.
-
 
 import (
 	"regexp"
@@ -21,11 +21,11 @@ var (
 	// by replacing sensitive data with placeholders while preserving query structure.
 	// This follows the same pattern used by nri-mssql for compatibility.
 	literalAnonymizer = regexp.MustCompile(`'[^']*'|\d+|".*?"`)
-	
+
 	// dmvPopCommentRemover removes DMV_POP test/synthetic query markers
 	// Matches patterns like: /* DMV_POP_1763101875620857000_37433 */
 	dmvPopCommentRemover = regexp.MustCompile(`/\*\s*DMV_POP_[^*]*\*/\s*`)
-	
+
 	// statementTextRegex is used to find StatementText attributes in execution plan XML
 	// Matches: StatementText="..." or StatementText='...'
 	statementTextRegex = regexp.MustCompile(`StatementText\s*=\s*("[^"]*"|'[^']*')`)
@@ -34,13 +34,14 @@ var (
 // AnonymizeQueryText anonymizes literal values in SQL query text for privacy and security.
 // This function replaces sensitive data like string literals, numeric values, and quoted content
 // with placeholders while preserving the query structure for analysis.
-// 
-// Examples:
-//   Input:  "SELECT * FROM users WHERE name = 'John Doe' AND age = 25"
-//   Output: "SELECT * FROM users WHERE name = ? AND age = ?"
 //
-//   Input:  "UPDATE products SET price = 99.99 WHERE category = \"electronics\""
-//   Output: "UPDATE products SET price = ? WHERE category = ?"
+// Examples:
+//
+//	Input:  "SELECT * FROM users WHERE name = 'John Doe' AND age = 25"
+//	Output: "SELECT * FROM users WHERE name = ? AND age = ?"
+//
+//	Input:  "UPDATE products SET price = 99.99 WHERE category = \"electronics\""
+//	Output: "UPDATE products SET price = ? WHERE category = ?"
 //
 // This follows the same anonymization pattern used by nri-mssql for consistent data handling.
 //
@@ -58,23 +59,23 @@ func AnonymizeQueryText(query string) string {
 	if query == "" {
 		return query
 	}
-	
+
 	// Safety check: Don't process extremely large strings to avoid performance issues
 	const maxSafeLength = 16384 // 16KB limit for safe regex processing
 	if len(query) > maxSafeLength {
 		// For very large content, just truncate with a note rather than risk regex performance issues
 		return query[:maxSafeLength] + "...[content too large for anonymization]"
 	}
-	
+
 	// Step 1: Remove DMV_POP test/synthetic query markers (e.g., /* DMV_POP_1763101875620857000_37433 */)
 	anonymizedQuery := dmvPopCommentRemover.ReplaceAllString(query, "")
-	
+
 	// Step 2: Replace all literal values (strings, numbers, quoted content) with placeholders
 	anonymizedQuery = literalAnonymizer.ReplaceAllString(anonymizedQuery, "?")
-	
+
 	// Step 3: Trim any extra whitespace created by comment removal
 	anonymizedQuery = strings.TrimSpace(anonymizedQuery)
-	
+
 	return anonymizedQuery
 }
 
@@ -83,8 +84,9 @@ func AnonymizeQueryText(query string) string {
 // the entire XML content and only targets the actual SQL statements within the execution plan.
 //
 // Examples:
-//   Input:  <StmtSimple StatementText="SELECT * FROM users WHERE id = 123" StatementId="1">
-//   Output: <StmtSimple StatementText="SELECT * FROM users WHERE id = ?" StatementId="1">
+//
+//	Input:  <StmtSimple StatementText="SELECT * FROM users WHERE id = 123" StatementId="1">
+//	Output: <StmtSimple StatementText="SELECT * FROM users WHERE id = ?" StatementId="1">
 //
 // Parameters:
 //   - xmlContent: The execution plan XML content to process
@@ -101,13 +103,13 @@ func AnonymizeExecutionPlanXML(xmlContent string) string {
 	if xmlContent == "" {
 		return xmlContent
 	}
-	
+
 	// Safety check for very large XML content
 	const maxSafeLength = 65536 // 64KB limit for XML processing
 	if len(xmlContent) > maxSafeLength {
 		return xmlContent[:maxSafeLength] + "...[XML content too large for processing]"
 	}
-	
+
 	// Replace function that anonymizes only the SQL content within StatementText attributes
 	anonymizedXML := statementTextRegex.ReplaceAllStringFunc(xmlContent, func(match string) string {
 		// Find the position of the equals sign and the quotes
@@ -115,17 +117,17 @@ func AnonymizeExecutionPlanXML(xmlContent string) string {
 		if eqIndex == -1 {
 			return match
 		}
-		
+
 		// Find the start of the quote (skip whitespace after =)
 		quoteStart := eqIndex + 1
 		for quoteStart < len(match) && (match[quoteStart] == ' ' || match[quoteStart] == '\t') {
 			quoteStart++
 		}
-		
+
 		if quoteStart >= len(match) {
 			return match
 		}
-		
+
 		quote := match[quoteStart]
 		if quote == '"' {
 			// Extract the SQL content between double quotes
@@ -148,7 +150,7 @@ func AnonymizeExecutionPlanXML(xmlContent string) string {
 		}
 		return match // Return unchanged if parsing fails
 	})
-	
+
 	return anonymizedXML
 }
 
@@ -164,12 +166,12 @@ func SafeAnonymizeQueryText(queryPtr *string) string {
 	if queryPtr == nil {
 		return "[nil query]"
 	}
-	
+
 	query := *queryPtr
 	if query == "" {
 		return "[empty query]"
 	}
-	
+
 	return AnonymizeQueryText(query)
 }
 

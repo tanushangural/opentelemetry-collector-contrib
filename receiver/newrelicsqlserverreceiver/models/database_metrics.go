@@ -174,7 +174,7 @@ package models
 type DatabaseBufferMetrics struct {
 	// DatabaseName is the name of the database
 	DatabaseName string `db:"db_name"`
-	
+
 	// BufferPoolSizeBytes represents the size of buffer pool allocated for this database in bytes
 	// This metric corresponds to bufferpool.sizePerDatabaseInBytes from New Relic
 	// Query source: sys.dm_os_buffer_descriptors with database-specific filtering
@@ -186,7 +186,7 @@ type DatabaseBufferMetrics struct {
 type DatabaseDiskMetrics struct {
 	// DatabaseName is the name of the database
 	DatabaseName string `db:"db_name"`
-	
+
 	// MaxDiskSizeBytes represents the maximum size allowed for the database in bytes
 	// This metric corresponds to maxDiskSizeInBytes from New Relic
 	// Query source: DATABASEPROPERTYEX function for Azure SQL Database compatibility
@@ -198,7 +198,7 @@ type DatabaseDiskMetrics struct {
 type DatabaseIOMetrics struct {
 	// DatabaseName is the name of the database
 	DatabaseName string `db:"db_name"`
-	
+
 	// IOStallTimeMs represents the total IO stall time for the database in milliseconds
 	// This metric corresponds to io.stallInMilliseconds from New Relic
 	// Query source: sys.dm_io_virtual_file_stats for database-specific IO statistics
@@ -210,7 +210,7 @@ type DatabaseIOMetrics struct {
 type DatabaseLogGrowthMetrics struct {
 	// DatabaseName is the name of the database
 	DatabaseName string `db:"db_name"`
-	
+
 	// LogGrowthCount represents the number of log growth events for the database
 	// This metric corresponds to log.transactionGrowth from New Relic
 	// Query source: sys.dm_os_performance_counters for 'Log Growths' counter
@@ -222,7 +222,7 @@ type DatabaseLogGrowthMetrics struct {
 type DatabasePageFileMetrics struct {
 	// DatabaseName is the name of the database
 	DatabaseName string `db:"db_name"`
-	
+
 	// PageFileAvailableBytes represents the reserved space not used (available page file) in bytes
 	// This metric corresponds to pageFileAvailable from New Relic
 	// Query source: sys.partitions and sys.allocation_units for space allocation statistics
@@ -234,7 +234,7 @@ type DatabasePageFileMetrics struct {
 type DatabasePageFileTotalMetrics struct {
 	// DatabaseName is the name of the database
 	DatabaseName string `db:"db_name"`
-	
+
 	// PageFileTotalBytes represents the total reserved space (page file total) in bytes
 	// This metric corresponds to pageFileTotal from New Relic
 	// Query source: sys.partitions and sys.allocation_units for total space allocation statistics

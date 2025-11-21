@@ -1,8 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package models provides data models for SQL Server user connection metrics.
-// This file implements comprehensive collection of user connection status information
 // showing how user connections are distributed across different states.
 //
 // User Connection Status Metrics Overview:

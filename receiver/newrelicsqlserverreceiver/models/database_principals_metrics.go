@@ -1,8 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package models provides data models for SQL Server database principals metrics.
-// This file implements comprehensive collection of database security principals
 // including users, roles, and security-related metadata.
 //
 // Database Principals Metrics Overview:

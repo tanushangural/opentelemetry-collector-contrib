@@ -1,8 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package queries provides SQL queries for collecting SQL Server database role membership metrics.
-// This file implements comprehensive collection of database role membership information
 // showing relationships between roles and their members across different SQL Server engine types.
 //
 // Database Role Membership Queries Overview:

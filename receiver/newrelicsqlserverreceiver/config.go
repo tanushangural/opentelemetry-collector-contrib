@@ -17,7 +17,6 @@ import (
 )
 
 // Config represents the receiver config settings within the collector's config.yaml
-// Based on nri-mssql ArgumentList structure for compatibility
 type Config struct {
 	scraperhelper.ControllerConfig `mapstructure:",squash"`
 
@@ -54,6 +53,10 @@ type Config struct {
 	EnableInstancePerformanceRatiosMetrics bool `mapstructure:"enable_instance_performance_ratios_metrics"` // Compilations/batch, page splits/batch ratios
 	EnableInstanceIndexMetrics             bool `mapstructure:"enable_instance_index_metrics"`              // Full scans/sec and index performance
 	EnableInstanceLockMetrics              bool `mapstructure:"enable_instance_lock_metrics"`               // Lock timeouts/sec and avg wait time
+
+	// Lock Analysis Metrics - Detailed lock analysis for resource types and modes
+	EnableLockResourceMetrics bool `mapstructure:"enable_lock_resource_metrics"` // Lock resource analysis (what's being locked)
+	EnableLockModeMetrics     bool `mapstructure:"enable_lock_mode_metrics"`     // Lock mode analysis (how it's locked)
 
 	// Wait Time Metrics - Extensions
 	EnableLatchWaitTimeMetrics bool `mapstructure:"enable_latch_wait_time_metrics"` // Latch-specific wait time metrics
@@ -167,6 +170,10 @@ func DefaultConfig() component.Config {
 		EnableInstanceIndexMetrics:             true,
 		EnableInstanceLockMetrics:              true,
 
+		// Default lock analysis metrics (enabled by default)
+		EnableLockResourceMetrics: true,
+		EnableLockModeMetrics:     true,
+
 		// Default wait time metrics extensions
 		EnableLatchWaitTimeMetrics: true,
 
@@ -175,7 +182,7 @@ func DefaultConfig() component.Config {
 		EnableSecurityPrincipalsMetrics:  false,
 		EnableSecurityRoleMembersMetrics: false,
 
-		// Default feature toggles (matching nri-mssql defaults)
+		// Default feature toggles
 		EnableDatabaseSampleMetrics:  false, // Master toggle - when true, enables all database metrics
 		EnableFailoverClusterMetrics: false, // Failover cluster and Always On metrics
 
@@ -257,7 +264,6 @@ func DefaultConfig() component.Config {
 }
 
 // Validate validates the configuration and sets defaults where needed
-// Based on nri-mssql ArgumentList.Validate() method
 func (cfg *Config) Validate() error {
 	if cfg.Hostname == "" {
 		return errors.New("hostname cannot be empty")
@@ -266,7 +272,7 @@ func (cfg *Config) Validate() error {
 	if cfg.Port != "" && cfg.Instance != "" {
 		return errors.New("specify either port or instance but not both")
 	} else if cfg.Port == "" && cfg.Instance == "" {
-		// Default to port 1433 if neither is specified (matching nri-mssql behavior)
+		// Default to port 1433 if neither is specified
 		cfg.Port = "1433"
 	}
 
@@ -312,10 +318,9 @@ func (cfg *Config) Unmarshal(conf *confmap.Conf) error {
 }
 
 // GetMaxConcurrentWorkers returns the configured max concurrent workers with fallback
-// Based on nri-mssql ArgumentList.GetMaxConcurrentWorkers() method
 func (cfg *Config) GetMaxConcurrentWorkers() int {
 	if cfg.MaxConcurrentWorkers <= 0 {
-		return 10 // DefaultMaxConcurrentWorkers from nri-mssql
+		return 10 // Default max concurrent workers
 	}
 	return cfg.MaxConcurrentWorkers
 }
@@ -326,7 +331,6 @@ func (cfg *Config) IsAzureADAuth() bool {
 }
 
 // CreateConnectionURL creates a connection string for SQL Server authentication
-// Based on nri-mssql connection.CreateConnectionURL() method
 func (cfg *Config) CreateConnectionURL(dbName string) string {
 	connectionURL := &url.URL{
 		Scheme: "sqlserver",
@@ -372,7 +376,6 @@ func (cfg *Config) CreateConnectionURL(dbName string) string {
 }
 
 // CreateAzureADConnectionURL creates a connection string for Azure AD authentication
-// Based on nri-mssql connection.CreateAzureADConnectionURL() method
 func (cfg *Config) CreateAzureADConnectionURL(dbName string) string {
 	connectionString := fmt.Sprintf(
 		"server=%s;port=%s;fedauth=ActiveDirectoryServicePrincipal;applicationclientid=%s;clientsecret=%s;database=%s",

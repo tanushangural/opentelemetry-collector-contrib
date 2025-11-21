@@ -113,7 +113,7 @@
 package models
 
 // SlowQuery represents slow query performance data collected from SQL Server
-// This struct is modeled after nri-mssql's TopNSlowQueryDetails for compatibility
+// This struct provides compatibility with the existing data structure format
 type SlowQuery struct {
 	QueryID                *string  `db:"query_id" metric_name:"query_id" source_type:"attribute"`
 	QueryText              *string  `db:"query_text" metric_name:"query_text" source_type:"attribute"`
@@ -131,7 +131,7 @@ type SlowQuery struct {
 
 // BlockingSession represents blocking session information
 type BlockingSession struct {
-BlockingSPID          *int64   `db:"blocking_spid" metric_name:"sqlserver.blocking.spid" source_type:"gauge"`
+	BlockingSPID          *int64   `db:"blocking_spid" metric_name:"sqlserver.blocking.spid" source_type:"gauge"`
 	BlockingStatus        *string  `db:"blocking_status" metric_name:"sqlserver.blocking.status" source_type:"attribute"`
 	BlockedSPID           *int64   `db:"blocked_spid" metric_name:"sqlserver.blocked.spid" source_type:"gauge"`
 	BlockedStatus         *string  `db:"blocked_status" metric_name:"sqlserver.blocked.status" source_type:"attribute"`
@@ -147,13 +147,13 @@ BlockingSPID          *int64   `db:"blocking_spid" metric_name:"sqlserver.blocki
 // WaitTimeAnalysis represents wait time analysis data for SQL Server queries
 
 type WaitTimeAnalysis struct {
-	QueryID             []byte     `db:"query_id" metric_name:"query_id" source_type:"attribute"`
-	DatabaseName        *string    `db:"database_name" metric_name:"database_name" source_type:"attribute"`
-	QueryText           *string    `db:"query_text" metric_name:"query_text" source_type:"attribute"`
-	WaitCategory        *string    `db:"wait_category" metric_name:"wait_category" source_type:"attribute"`
-	TotalWaitTimeMs     *float64   `db:"total_wait_time_ms" metric_name:"total_wait_time_ms" source_type:"gauge"`
-	AvgWaitTimeMs       *float64   `db:"avg_wait_time_ms" metric_name:"avg_wait_time_ms" source_type:"gauge"`
-	WaitEventCount      *int64     `db:"wait_event_count" metric_name:"wait_event_count" source_type:"gauge"`
-	LastExecutionTime   *string    `db:"last_execution_time" metric_name:"last_execution_time" source_type:"attribute"`
-	CollectionTimestamp *string    `db:"collection_timestamp" metric_name:"collection_timestamp" source_type:"attribute"`
+	QueryID             []byte   `db:"query_id" metric_name:"query_id" source_type:"attribute"`
+	DatabaseName        *string  `db:"database_name" metric_name:"database_name" source_type:"attribute"`
+	QueryText           *string  `db:"query_text" metric_name:"query_text" source_type:"attribute"`
+	WaitCategory        *string  `db:"wait_category" metric_name:"wait_category" source_type:"attribute"`
+	TotalWaitTimeMs     *float64 `db:"total_wait_time_ms" metric_name:"total_wait_time_ms" source_type:"gauge"`
+	AvgWaitTimeMs       *float64 `db:"avg_wait_time_ms" metric_name:"avg_wait_time_ms" source_type:"gauge"`
+	WaitEventCount      *int64   `db:"wait_event_count" metric_name:"wait_event_count" source_type:"gauge"`
+	LastExecutionTime   *string  `db:"last_execution_time" metric_name:"last_execution_time" source_type:"attribute"`
+	CollectionTimestamp *string  `db:"collection_timestamp" metric_name:"collection_timestamp" source_type:"attribute"`
 }

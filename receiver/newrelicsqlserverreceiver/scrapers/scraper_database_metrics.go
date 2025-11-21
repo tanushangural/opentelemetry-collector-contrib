@@ -1028,7 +1028,7 @@ func (s *DatabaseScraper) ScrapeDatabaseMemoryMetrics(ctx context.Context, scope
 		return fmt.Errorf("memory query not found for engine edition %d", s.engineEdition)
 	}
 
-	s.logger.Debug("Executing memory query", 
+	s.logger.Debug("Executing memory query",
 		zap.String("query", queries.TruncateQuery(query, 100)),
 		zap.String("engine_type", queries.GetEngineTypeName(s.engineEdition)))
 

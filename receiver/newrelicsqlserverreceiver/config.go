@@ -111,6 +111,9 @@ type Config struct {
 	QueryMonitoringCountThreshold        int  `mapstructure:"query_monitoring_count_threshold"`
 	QueryMonitoringFetchInterval         int  `mapstructure:"query_monitoring_fetch_interval"`
 	QueryMonitoringTextTruncateLimit     int  `mapstructure:"query_monitoring_text_truncate_limit"`
+
+	// Active running queries configuration
+	EnableActiveRunningQueries bool `mapstructure:"enable_active_running_queries"`
 }
 
 // DefaultConfig returns a Config struct with default values
@@ -192,6 +195,9 @@ func DefaultConfig() component.Config {
 		QueryMonitoringCountThreshold:        20,
 		QueryMonitoringFetchInterval:         15,
 		QueryMonitoringTextTruncateLimit:     4094, // Default text truncate limit (4KB - 2 bytes for null terminator)
+
+		// Default active running queries settings
+		EnableActiveRunningQueries: true, // Enable by default for comprehensive query monitoring
 	}
 
 	// Set default collection interval to 15 seconds

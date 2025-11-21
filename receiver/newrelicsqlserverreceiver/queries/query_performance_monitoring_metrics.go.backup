@@ -366,10 +366,6 @@ WITH StatementDetails AS (
 		AND pa.attribute = 'dbid'
 		AND qt.text IS NOT NULL
 		AND LTRIM(RTRIM(qt.text)) <> ''
-		AND DB_NAME(CONVERT(INT, pa.value)) NOT IN ('master', 'model', 'msdb', 'tempdb')
-		AND qs.text NOT LIKE '%%sys.%%'
-		AND qs.text NOT LIKE '%%INFORMATION_SCHEMA%%'
-		AND qs.text NOT LIKE '%%schema_name()%%'
 		AND EXISTS (
 			SELECT 1
 			FROM sys.databases d
@@ -587,13 +583,6 @@ CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) AS st
 WHERE qs.query_hash = @TargetQueryHash
     AND qp.query_plan IS NOT NULL;`
 
-// ActiveQueryExecutionPlanQuery fetches the execution plan for an active query using its plan_handle
-const ActiveQueryExecutionPlanQuery = `
-SELECT
-    CAST(qp.query_plan AS NVARCHAR(MAX)) AS execution_plan_xml
-FROM sys.dm_exec_query_plan(%s) AS qp
-WHERE qp.query_plan IS NOT NULL;`
-
 // ActiveRunningQueriesQuery retrieves currently executing queries with wait and blocking details
 // This query captures real-time execution state including wait types, blocking chains, and query text
 const ActiveRunningQueriesQuery = `
@@ -603,19 +592,27 @@ DECLARE @TextTruncateLimit INT = %d; -- Set the maximum length for query text
 SELECT TOP (@Limit)
     -- A. CURRENT SESSION DETAILS
     r_wait.session_id AS current_session_id,
+    r_wait.request_id AS request_id,
     DB_NAME(r_wait.database_id) AS database_name,
     s_wait.login_name AS login_name,
     s_wait.host_name AS host_name,
     r_wait.command AS request_command,
+    r_wait.status AS request_status,
 
     -- B. WAIT DETAILS (Always present for sessions in dm_exec_requests)
     r_wait.wait_type AS wait_type,
     r_wait.wait_time / 1000.0 AS wait_time_s,
     r_wait.wait_resource AS wait_resource,
+    r_wait.last_wait_type AS last_wait_type,
 
     -- C. PERFORMANCE/EXECUTION METRICS
     r_wait.cpu_time AS cpu_time_ms,
     r_wait.total_elapsed_time AS total_elapsed_time_ms,
+    r_wait.reads AS reads,
+    r_wait.writes AS writes,
+    r_wait.logical_reads AS logical_reads,
+    r_wait.row_count AS row_count,
+    r_wait.granted_query_memory AS granted_query_memory_pages,
     FORMAT(
         r_wait.start_time AT TIME ZONE 'UTC',
         'yyyy-MM-ddTHH:mm:ssZ'
@@ -653,7 +650,10 @@ SELECT TOP (@Limit)
                 ELSE r_blocker.statement_end_offset
             END - r_blocker.statement_start_offset) / 2) + 1
         ), @TextTruncateLimit)
-    END AS blocking_query_statement_text
+    END AS blocking_query_statement_text,
+
+    -- G. PLAN HANDLE - For conditional execution plan fetching
+    r_wait.plan_handle AS plan_handle
 
 FROM
     sys.dm_exec_requests AS r_wait
@@ -674,7 +674,15 @@ WHERE
     AND r_wait.database_id > 4
     AND r_wait.wait_type IS NOT NULL -- Exclude certain system-only states
 ORDER BY
-    r_wait.wait_time DESC;`
+    r_wait.total_elapsed_time DESC;`
+
+// ActiveQueryExecutionPlanQuery retrieves the execution plan for an active running query
+// This query fetches the XML execution plan using sys.dm_exec_query_plan for a specific plan_handle
+const ActiveQueryExecutionPlanQuery = `
+SELECT
+    CAST(qp.query_plan AS NVARCHAR(MAX)) AS execution_plan_xml
+FROM sys.dm_exec_query_plan(%s) AS qp
+WHERE qp.query_plan IS NOT NULL;`
 
 // LockedObjectsBySessionQuery retrieves detailed information about objects locked by a specific session
 // This query resolves lock resources to actual table/object names for better troubleshooting

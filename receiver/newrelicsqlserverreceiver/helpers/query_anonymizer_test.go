@@ -1,7 +1,7 @@
 package helpers
+
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
-
 
 import (
 	"strings"
@@ -73,38 +73,38 @@ func TestAnonymizeExecutionPlanXML(t *testing.T) {
 		expected string
 	}{
 		{
-			name: "Simple StatementText with single quotes",
-			input: `<StmtSimple StatementText='SELECT * FROM users WHERE id = 123' StatementId="1">`,
+			name:     "Simple StatementText with single quotes",
+			input:    `<StmtSimple StatementText='SELECT * FROM users WHERE id = 123' StatementId="1">`,
 			expected: `<StmtSimple StatementText='SELECT * FROM users WHERE id = ?' StatementId="1">`,
 		},
 		{
-			name: "StatementText with double quotes",
-			input: `<StmtSimple StatementText="SELECT * FROM products WHERE price > 100" StatementId="1">`,
+			name:     "StatementText with double quotes",
+			input:    `<StmtSimple StatementText="SELECT * FROM products WHERE price > 100" StatementId="1">`,
 			expected: `<StmtSimple StatementText="SELECT * FROM products WHERE price > ?" StatementId="1">`,
 		},
 		{
-			name: "Multiple StatementText attributes",
-			input: `<Root><StmtSimple StatementText="SELECT name FROM users WHERE id = 1"/><StmtSimple StatementText='UPDATE products SET price = 99.99'/></Root>`,
+			name:     "Multiple StatementText attributes",
+			input:    `<Root><StmtSimple StatementText="SELECT name FROM users WHERE id = 1"/><StmtSimple StatementText='UPDATE products SET price = 99.99'/></Root>`,
 			expected: `<Root><StmtSimple StatementText="SELECT name FROM users WHERE id = ?"/><StmtSimple StatementText='UPDATE products SET price = ?.?'/></Root>`,
 		},
 		{
-			name: "No StatementText attributes",
-			input: `<StmtSimple StatementId="1" StatementType="SELECT">`,
+			name:     "No StatementText attributes",
+			input:    `<StmtSimple StatementId="1" StatementType="SELECT">`,
 			expected: `<StmtSimple StatementId="1" StatementType="SELECT">`,
 		},
 		{
-			name: "Empty StatementText",
-			input: `<StmtSimple StatementText="" StatementId="1">`,
+			name:     "Empty StatementText",
+			input:    `<StmtSimple StatementText="" StatementId="1">`,
 			expected: `<StmtSimple StatementText="" StatementId="1">`,
 		},
 		{
-			name: "Complex nested XML with StatementText",
-			input: `<ShowPlanXML><Batch><Statements><StmtSimple StatementText="SELECT * FROM orders WHERE total > 1000 AND status = 'pending'" StatementId="1"/></Statements></Batch></ShowPlanXML>`,
+			name:     "Complex nested XML with StatementText",
+			input:    `<ShowPlanXML><Batch><Statements><StmtSimple StatementText="SELECT * FROM orders WHERE total > 1000 AND status = 'pending'" StatementId="1"/></Statements></Batch></ShowPlanXML>`,
 			expected: `<ShowPlanXML><Batch><Statements><StmtSimple StatementText="SELECT * FROM orders WHERE total > ? AND status = ?" StatementId="1"/></Statements></Batch></ShowPlanXML>`,
 		},
 		{
-			name: "StatementText with whitespace around equals",
-			input: `<StmtSimple StatementText  =  "SELECT * FROM users WHERE age = 25" StatementId="1">`,
+			name:     "StatementText with whitespace around equals",
+			input:    `<StmtSimple StatementText  =  "SELECT * FROM users WHERE age = 25" StatementId="1">`,
 			expected: `<StmtSimple StatementText  =  "SELECT * FROM users WHERE age = ?" StatementId="1">`,
 		},
 	}
@@ -236,7 +236,7 @@ func stringPtr(s string) *string {
 // Benchmark tests to ensure performance
 func BenchmarkAnonymizeQueryText(b *testing.B) {
 	query := "SELECT * FROM users WHERE name = 'John Doe' AND age = 25 AND city = 'New York'"
-	
+
 	for i := 0; i < b.N; i++ {
 		AnonymizeQueryText(query)
 	}
@@ -244,7 +244,7 @@ func BenchmarkAnonymizeQueryText(b *testing.B) {
 
 func BenchmarkAnonymizeExecutionPlanXML(b *testing.B) {
 	xml := `<ShowPlanXML><Batch><Statements><StmtSimple StatementText="SELECT * FROM orders WHERE total > 1000 AND status = 'pending'" StatementId="1"/></Statements></Batch></ShowPlanXML>`
-	
+
 	for i := 0; i < b.N; i++ {
 		AnonymizeExecutionPlanXML(xml)
 	}

@@ -29,7 +29,7 @@ service:
   # Telemetry configuration for the collector itself
   telemetry:
     logs:
-      level: info
+      level: debug  # Changed from info to debug for verbose logging
     metrics:
       level: none
 
@@ -90,7 +90,10 @@ receivers:
     
     # Enable query performance monitoring (blocking sessions, slow queries, etc.)
     enable_query_monitoring: true
-    
+
+    # Enable active running queries monitoring (captures currently executing queries with waits)
+    enable_active_running_queries: true
+
     # Query monitoring thresholds (required when enable_query_monitoring is true)
     query_monitoring_response_time_threshold: 10  # milliseconds - queries slower than this will be monitored
     query_monitoring_count_threshold: 5           # minimum execution count for queries to be monitored
@@ -100,8 +103,8 @@ receivers:
 exporters:
   # New Relic OTLP HTTP Exporter
   otlphttp:
-    # New Relic OTLP endpoint
-    endpoint: "https://staging-otlp.nr-data.net:4317"
+    # New Relic OTLP endpoint (HTTP uses port 4318, not 4317)
+    endpoint: "https://staging-otlp.nr-data.net:4318"
     
     # Headers for authentication
     headers:
@@ -133,8 +136,8 @@ exporters:
   
   # New Relic OTLP HTTP Exporter for Logs (Execution Plans)
   otlphttp/logs:
-    # New Relic OTLP logs endpoint
-    endpoint: "https://staging-otlp.nr-data.net:4317"
+    # New Relic OTLP logs endpoint (HTTP uses port 4318, not 4317)
+    endpoint: "https://staging-otlp.nr-data.net:4318"
     
     # Headers for authentication
     headers:
@@ -167,9 +170,9 @@ exporters:
   # Debug exporter for debugging (outputs to console)
   debug:
     verbosity: detailed
-    # Use detailed format to see all metrics and logs
-    sampling_initial: 2
-    sampling_thereafter: 500
+    # Output ALL metrics and logs without sampling for troubleshooting
+    sampling_initial: 10000  # Increased to capture more initial data
+    sampling_thereafter: 10000  # Increased to see all metrics continuously
 
 # Environment Variables to Set:
 # 

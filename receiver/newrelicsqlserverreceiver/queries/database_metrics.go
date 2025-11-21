@@ -206,13 +206,13 @@ LEFT JOIN sys.internal_tables it WITH (NOLOCK) ON p.object_id = it.object_id`
 // Uses sys.dm_os_process_memory and sys.dm_os_sys_memory which are not available in Azure SQL Database
 // Source: https://github.com/newrelic/nri-mssql/blob/main/src/metrics/instance_metric_definitions.go
 /*
-const DatabaseMemoryQuery = `SELECT 
+const DatabaseMemoryQuery = `SELECT
 	MAX(sys_mem.total_physical_memory_kb * 1024.0) AS total_physical_memory,
 	MAX(sys_mem.available_physical_memory_kb * 1024.0) AS available_physical_memory,
 	(MAX(proc_mem.physical_memory_in_use_kb) / (MAX(sys_mem.total_physical_memory_kb) * 1.0)) * 100 AS memory_utilization
 FROM sys.dm_os_process_memory proc_mem,
 	sys.dm_os_sys_memory sys_mem,
-	sys.dm_os_performance_counters perf_count 
+	sys.dm_os_performance_counters perf_count
 WHERE object_name = 'SQLServer:Memory Manager'`
 */
 
@@ -241,5 +241,3 @@ const DatabaseListQueryAzureSQL = `SELECT DB_NAME() AS name`
 const DatabaseListQueryAzureMI = `SELECT name FROM sys.databases 
 WHERE name NOT IN ('master', 'tempdb', 'msdb', 'model', 'rdsadmin', 'distribution', 'model_msdb', 'model_replicatedmaster')
 AND state = 0`
-
-

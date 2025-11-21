@@ -6,6 +6,7 @@ package models
 import (
 	"encoding/xml"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -229,7 +230,7 @@ type QueryTimeStats struct {
 }
 
 // ParseExecutionPlanXML parses SQL Server execution plan XML into structured data
-func ParseExecutionPlanXML(planXML string, queryID, planHandle string) (*ExecutionPlanAnalysis, error) {
+func ParseExecutionPlanXML(planXML, queryID, planHandle string) (*ExecutionPlanAnalysis, error) {
 	if planXML == "" {
 		return nil, fmt.Errorf("empty execution plan XML")
 	}
@@ -288,6 +289,8 @@ func parseRelOpRecursively(relOp *RelOp, analysis *ExecutionPlanAnalysis, queryI
 	currentNodeID := *nodeID
 
 	// Debug logging to track recursion
+	log.Printf("DEBUG: Processing node %d (parent: %d) - PhysicalOp: %s, InputType: %s, Children: %d, OneSide: %v, OtherSide: %v",
+		currentNodeID, parentNodeID, relOp.PhysicalOp, incomingInputType, len(relOp.RelOp), relOp.OneSide != nil, relOp.OtherSide != nil)
 	node := ExecutionPlanNode{
 		QueryID:                queryID,
 		PlanHandle:             planHandle,

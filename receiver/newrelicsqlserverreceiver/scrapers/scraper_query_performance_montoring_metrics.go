@@ -124,7 +124,7 @@ func (s *QueryPerformanceScraper) ScrapeSlowQueryMetrics(ctx context.Context, sc
 }
 
 // ScrapeBlockingSessionMetrics collects blocking session metrics
-func (s *QueryPerformanceScraper) ScrapeBlockingSessionMetrics(ctx context.Context, scopeMetrics pmetric.ScopeMetrics, limit int, textTruncateLimit int) error {
+func (s *QueryPerformanceScraper) ScrapeBlockingSessionMetrics(ctx context.Context, scopeMetrics pmetric.ScopeMetrics, limit, textTruncateLimit int) error {
 	query := fmt.Sprintf(queries.BlockingSessionsQuery, limit, textTruncateLimit)
 
 	s.logger.Debug("Executing blocking session metrics collection",
@@ -315,7 +315,7 @@ func (s *QueryPerformanceScraper) processSlowQueryMetrics(result models.SlowQuer
 	// Create avg_rows_processed metric - CARDINALITY SAFE
 	if result.AvgRowsProcessed != nil {
 		metric := scopeMetrics.Metrics().AppendEmpty()
-		metric.SetName("sqlserver.slowquery.rows_processed")
+		metric.SetName("sqlserver.slowquery.avg_rows_processed")
 		metric.SetDescription("Average rows processed (returned) per execution for slow query")
 		metric.SetUnit("1")
 
@@ -480,6 +480,118 @@ func (s *QueryPerformanceScraper) processSlowQueryMetrics(result models.SlowQuer
 		createSafeAttributes().CopyTo(dataPoint.Attributes())
 	}
 
+	// ========================================
+	// RCA ENHANCEMENT METRICS
+	// ========================================
+
+	// Min/Max/Last Elapsed Time Metrics
+	if result.MinElapsedTimeMs != nil {
+		metric := scopeMetrics.Metrics().AppendEmpty()
+		metric.SetName("sqlserver.slowquery.min_elapsed_time_ms")
+		metric.SetDescription("Minimum elapsed time in milliseconds")
+		metric.SetUnit("ms")
+		gauge := metric.SetEmptyGauge()
+		dataPoint := gauge.DataPoints().AppendEmpty()
+		dataPoint.SetTimestamp(timestamp)
+		dataPoint.SetStartTimestamp(s.startTime)
+		dataPoint.SetDoubleValue(*result.MinElapsedTimeMs)
+		createSafeAttributes().CopyTo(dataPoint.Attributes())
+	}
+
+	if result.MaxElapsedTimeMs != nil {
+		metric := scopeMetrics.Metrics().AppendEmpty()
+		metric.SetName("sqlserver.slowquery.max_elapsed_time_ms")
+		metric.SetDescription("Maximum elapsed time in milliseconds")
+		metric.SetUnit("ms")
+		gauge := metric.SetEmptyGauge()
+		dataPoint := gauge.DataPoints().AppendEmpty()
+		dataPoint.SetTimestamp(timestamp)
+		dataPoint.SetStartTimestamp(s.startTime)
+		dataPoint.SetDoubleValue(*result.MaxElapsedTimeMs)
+		createSafeAttributes().CopyTo(dataPoint.Attributes())
+	}
+
+	if result.LastElapsedTimeMs != nil {
+		metric := scopeMetrics.Metrics().AppendEmpty()
+		metric.SetName("sqlserver.slowquery.last_elapsed_time_ms")
+		metric.SetDescription("Last elapsed time in milliseconds")
+		metric.SetUnit("ms")
+		gauge := metric.SetEmptyGauge()
+		dataPoint := gauge.DataPoints().AppendEmpty()
+		dataPoint.SetTimestamp(timestamp)
+		dataPoint.SetStartTimestamp(s.startTime)
+		dataPoint.SetDoubleValue(*result.LastElapsedTimeMs)
+		createSafeAttributes().CopyTo(dataPoint.Attributes())
+	}
+
+	// Memory Grant Metrics
+	if result.LastGrantKB != nil {
+		metric := scopeMetrics.Metrics().AppendEmpty()
+		metric.SetName("sqlserver.slowquery.last_grant_kb")
+		metric.SetDescription("Last memory grant in KB")
+		metric.SetUnit("KB")
+		gauge := metric.SetEmptyGauge()
+		dataPoint := gauge.DataPoints().AppendEmpty()
+		dataPoint.SetTimestamp(timestamp)
+		dataPoint.SetStartTimestamp(s.startTime)
+		dataPoint.SetDoubleValue(*result.LastGrantKB)
+		createSafeAttributes().CopyTo(dataPoint.Attributes())
+	}
+
+	if result.LastUsedGrantKB != nil {
+		metric := scopeMetrics.Metrics().AppendEmpty()
+		metric.SetName("sqlserver.slowquery.last_used_grant_kb")
+		metric.SetDescription("Last used memory grant in KB")
+		metric.SetUnit("KB")
+		gauge := metric.SetEmptyGauge()
+		dataPoint := gauge.DataPoints().AppendEmpty()
+		dataPoint.SetTimestamp(timestamp)
+		dataPoint.SetStartTimestamp(s.startTime)
+		dataPoint.SetDoubleValue(*result.LastUsedGrantKB)
+		createSafeAttributes().CopyTo(dataPoint.Attributes())
+	}
+
+	// TempDB Spill Metrics
+	if result.LastSpills != nil {
+		metric := scopeMetrics.Metrics().AppendEmpty()
+		metric.SetName("sqlserver.slowquery.last_spills")
+		metric.SetDescription("Last TempDB spills count")
+		metric.SetUnit("1")
+		gauge := metric.SetEmptyGauge()
+		dataPoint := gauge.DataPoints().AppendEmpty()
+		dataPoint.SetTimestamp(timestamp)
+		dataPoint.SetStartTimestamp(s.startTime)
+		dataPoint.SetDoubleValue(*result.LastSpills)
+		createSafeAttributes().CopyTo(dataPoint.Attributes())
+	}
+
+	if result.MaxSpills != nil {
+		metric := scopeMetrics.Metrics().AppendEmpty()
+		metric.SetName("sqlserver.slowquery.max_spills")
+		metric.SetDescription("Maximum TempDB spills count")
+		metric.SetUnit("1")
+		gauge := metric.SetEmptyGauge()
+		dataPoint := gauge.DataPoints().AppendEmpty()
+		dataPoint.SetTimestamp(timestamp)
+		dataPoint.SetStartTimestamp(s.startTime)
+		dataPoint.SetDoubleValue(*result.MaxSpills)
+		createSafeAttributes().CopyTo(dataPoint.Attributes())
+	}
+
+	// Parallelism Metrics
+	if result.LastDOP != nil {
+		metric := scopeMetrics.Metrics().AppendEmpty()
+		metric.SetName("sqlserver.slowquery.last_dop")
+		metric.SetDescription("Last degree of parallelism")
+		metric.SetUnit("1")
+		gauge := metric.SetEmptyGauge()
+		dataPoint := gauge.DataPoints().AppendEmpty()
+		dataPoint.SetTimestamp(timestamp)
+		dataPoint.SetStartTimestamp(s.startTime)
+		dataPoint.SetDoubleValue(*result.LastDOP)
+		createSafeAttributes().CopyTo(dataPoint.Attributes())
+	}
+
 	// Use dedicated logging function with cardinality-safe approach
 	s.logger.Debug("Processed slow query metrics with cardinality safety", logAttributes()...)
 
@@ -491,8 +603,11 @@ func (s *QueryPerformanceScraper) processBlockingSessionMetrics(result models.Bl
 	timestamp := pcommon.NewTimestampFromTime(time.Now())
 
 	// Helper function to create common attributes for all blocking/blocked metrics
+	// RCA Enhancement: Includes comprehensive blocker identity, lock resource, transaction, and performance context
 	createCommonAttributes := func() pcommon.Map {
 		attrs := pcommon.NewMap()
+
+		// Existing: Basic blocking context
 		if result.WaitType != nil {
 			attrs.PutStr("wait_type", *result.WaitType)
 		}
@@ -502,6 +617,93 @@ func (s *QueryPerformanceScraper) processBlockingSessionMetrics(result models.Bl
 		if result.CommandType != nil {
 			attrs.PutStr("command_type", *result.CommandType)
 		}
+
+		// RCA Enhancement: Blocker session identity (WHO is causing the block)
+		if result.BlockerLoginName != nil {
+			attrs.PutStr("blocker_login_name", *result.BlockerLoginName)
+		}
+		if result.BlockerHostName != nil {
+			attrs.PutStr("blocker_host_name", *result.BlockerHostName)
+		}
+		if result.BlockerProgramName != nil {
+			attrs.PutStr("blocker_program_name", *result.BlockerProgramName)
+		}
+
+		// RCA Enhancement: Lock resource details (WHAT is being locked)
+		if result.WaitResource != nil {
+			attrs.PutStr("wait_resource", *result.WaitResource)
+		}
+
+		// RCA Enhancement: Blocker activity context (WHAT is blocker doing)
+		if result.BlockerCommandType != nil {
+			attrs.PutStr("blocker_command_type", *result.BlockerCommandType)
+		}
+		if result.BlockerStartTime != nil {
+			attrs.PutStr("blocker_start_time", *result.BlockerStartTime)
+		}
+		if result.BlockerStatus != nil {
+			attrs.PutStr("blocker_status", *result.BlockerStatus)
+		}
+		if result.BlockerOpenTransactionCount != nil {
+			attrs.PutInt("blocker_open_transaction_count", *result.BlockerOpenTransactionCount)
+		}
+
+		// RCA Enhancement: Blocker query identification (WHO is causing the block)
+		if result.BlockingSPID != nil {
+			attrs.PutInt("blocking_spid", *result.BlockingSPID)
+		}
+		if result.BlockingQueryText != nil && *result.BlockingQueryText != "" {
+			attrs.PutStr("blocking_query_text", helpers.AnonymizeQueryText(*result.BlockingQueryText))
+
+			// Compute query hash for blocking query to enable correlation
+			blockingQueryHash := helpers.ComputeQueryHash(*result.BlockingQueryText)
+			if blockingQueryHash != "" {
+				attrs.PutStr("blocking_query_hash", blockingQueryHash)
+			}
+		}
+
+		// RCA Enhancement: Transaction behavior (WHY is it blocking)
+		if result.BlockedIsolationLevel != nil {
+			attrs.PutInt("blocked_isolation_level", *result.BlockedIsolationLevel)
+		}
+		if result.BlockerIsolationLevel != nil {
+			attrs.PutInt("blocker_isolation_level", *result.BlockerIsolationLevel)
+		}
+		if result.BlockedOpenTransactionCount != nil {
+			attrs.PutInt("blocked_open_transaction_count", *result.BlockedOpenTransactionCount)
+		}
+
+		// RCA Enhancement: Blocked query performance impact
+		if result.BlockedTotalElapsedMs != nil {
+			attrs.PutInt("blocked_total_elapsed_ms", *result.BlockedTotalElapsedMs)
+		}
+		if result.BlockedCPUTimeMs != nil {
+			attrs.PutInt("blocked_cpu_time_ms", *result.BlockedCPUTimeMs)
+		}
+		if result.BlockedLogicalReads != nil {
+			attrs.PutInt("blocked_logical_reads", *result.BlockedLogicalReads)
+		}
+
+		// RCA Enhancement: Blocked query identification (WHO is being blocked)
+		if result.BlockedSPID != nil {
+			attrs.PutInt("blocked_spid", *result.BlockedSPID)
+		}
+		if result.BlockedStatus != nil {
+			attrs.PutStr("blocked_status", *result.BlockedStatus)
+		}
+		if result.BlockedQueryText != nil && *result.BlockedQueryText != "" {
+			attrs.PutStr("blocked_query_text", helpers.AnonymizeQueryText(*result.BlockedQueryText))
+
+			// Compute query hash for blocked query to enable correlation
+			blockedQueryHash := helpers.ComputeQueryHash(*result.BlockedQueryText)
+			if blockedQueryHash != "" {
+				attrs.PutStr("blocked_query_hash", blockedQueryHash)
+			}
+		}
+		if result.BlockedQueryStartTime != nil {
+			attrs.PutStr("blocked_query_start_time", *result.BlockedQueryStartTime)
+		}
+
 		return attrs
 	}
 
@@ -518,20 +720,9 @@ func (s *QueryPerformanceScraper) processBlockingSessionMetrics(result models.Bl
 		dataPoint.SetStartTimestamp(s.startTime)
 		dataPoint.SetIntValue(*result.BlockingSPID)
 
+		// All attributes (including blocking_spid, blocking_status, blocking_query_text, blocking_query_hash)
+		// are now set in createCommonAttributes()
 		attrs := createCommonAttributes()
-		attrs.PutInt("blocking_spid", *result.BlockingSPID)
-		if result.BlockingStatus != nil {
-			attrs.PutStr("blocking_status", *result.BlockingStatus)
-		}
-		if result.BlockingQueryText != nil && *result.BlockingQueryText != "" {
-			attrs.PutStr("blocking_query_text", helpers.AnonymizeQueryText(*result.BlockingQueryText))
-
-			// Compute query hash for blocking query to enable correlation
-			blockingQueryHash := helpers.ComputeQueryHash(*result.BlockingQueryText)
-			if blockingQueryHash != "" {
-				attrs.PutStr("blocking_query_hash", blockingQueryHash)
-			}
-		}
 		attrs.CopyTo(dataPoint.Attributes())
 	}
 
@@ -548,23 +739,9 @@ func (s *QueryPerformanceScraper) processBlockingSessionMetrics(result models.Bl
 		dataPoint.SetStartTimestamp(s.startTime)
 		dataPoint.SetIntValue(*result.BlockedSPID)
 
+		// All attributes (including blocked_spid, blocked_status, blocked_query_text,
+		// blocked_query_hash, blocked_query_start_time) are now set in createCommonAttributes()
 		attrs := createCommonAttributes()
-		attrs.PutInt("blocked_spid", *result.BlockedSPID)
-		if result.BlockedStatus != nil {
-			attrs.PutStr("blocked_status", *result.BlockedStatus)
-		}
-		if result.BlockedQueryText != nil {
-			attrs.PutStr("blocked_query_text", helpers.AnonymizeQueryText(*result.BlockedQueryText))
-
-			// Compute query hash for blocked query to enable correlation
-			blockedQueryHash := helpers.ComputeQueryHash(*result.BlockedQueryText)
-			if blockedQueryHash != "" {
-				attrs.PutStr("blocked_query_hash", blockedQueryHash)
-			}
-		}
-		if result.BlockedQueryStartTime != nil {
-			attrs.PutStr("blocked_query_start_time", *result.BlockedQueryStartTime)
-		}
 		attrs.CopyTo(dataPoint.Attributes())
 	}
 
@@ -581,21 +758,9 @@ func (s *QueryPerformanceScraper) processBlockingSessionMetrics(result models.Bl
 		dataPoint.SetStartTimestamp(s.startTime)
 		dataPoint.SetDoubleValue(*result.WaitTimeInSeconds)
 
-		// Set attributes including blocking SPID as an attribute
+		// All attributes (including blocking_spid, blocking_status, blocking_query_text, blocking_query_hash,
+		// blocked_spid, blocked_status, blocked_query_text, blocked_query_hash) are now set in createCommonAttributes()
 		attrs := createCommonAttributes()
-		attrs.PutInt("blocking_spid", int64(*result.BlockingSPID))
-		if result.BlockingStatus != nil {
-			attrs.PutStr("blocking_status", *result.BlockingStatus)
-		}
-		if result.BlockingQueryText != nil && *result.BlockingQueryText != "" {
-			attrs.PutStr("blocking_query_text", helpers.AnonymizeQueryText(*result.BlockingQueryText))
-
-			// Compute query hash for blocking query to enable correlation
-			blockingQueryHash := helpers.ComputeQueryHash(*result.BlockingQueryText)
-			if blockingQueryHash != "" {
-				attrs.PutStr("blocking_query_hash", blockingQueryHash)
-			}
-		}
 		attrs.CopyTo(dataPoint.Attributes())
 	}
 
@@ -612,24 +777,9 @@ func (s *QueryPerformanceScraper) processBlockingSessionMetrics(result models.Bl
 		dataPoint.SetStartTimestamp(s.startTime)
 		dataPoint.SetDoubleValue(*result.WaitTimeInSeconds)
 
-		// Set attributes including blocked SPID as an attribute
+		// All attributes (including blocked_spid, blocked_status, blocked_query_text, blocked_query_hash,
+		// blocked_query_start_time, blocking_spid, blocking_status, blocking_query_text) are now set in createCommonAttributes()
 		attrs := createCommonAttributes()
-		attrs.PutInt("blocked_spid", int64(*result.BlockedSPID))
-		if result.BlockedStatus != nil {
-			attrs.PutStr("blocked_status", *result.BlockedStatus)
-		}
-		if result.BlockedQueryText != nil {
-			attrs.PutStr("blocked_query_text", helpers.AnonymizeQueryText(*result.BlockedQueryText))
-
-			// Compute query hash for blocked query to enable correlation
-			blockedQueryHash := helpers.ComputeQueryHash(*result.BlockedQueryText)
-			if blockedQueryHash != "" {
-				attrs.PutStr("blocked_query_hash", blockedQueryHash)
-			}
-		}
-		if result.BlockedQueryStartTime != nil {
-			attrs.PutStr("blocked_query_start_time", *result.BlockedQueryStartTime)
-		}
 		attrs.CopyTo(dataPoint.Attributes())
 	}
 
@@ -646,19 +796,9 @@ func (s *QueryPerformanceScraper) processBlockingSessionMetrics(result models.Bl
 		dataPoint.SetStartTimestamp(s.startTime)
 		dataPoint.SetDoubleValue(*result.WaitTimeInSeconds)
 
+		// All attributes (including blocking_spid, blocked_spid, blocking_status, blocked_status)
+		// are now set in createCommonAttributes()
 		attrs := createCommonAttributes()
-		if result.BlockingSPID != nil {
-			attrs.PutInt("blocking_spid", int64(*result.BlockingSPID))
-		}
-		if result.BlockedSPID != nil {
-			attrs.PutInt("blocked_spid", int64(*result.BlockedSPID))
-		}
-		if result.BlockingStatus != nil {
-			attrs.PutStr("blocking_status", *result.BlockingStatus)
-		}
-		if result.BlockedStatus != nil {
-			attrs.PutStr("blocked_status", *result.BlockedStatus)
-		}
 		attrs.CopyTo(dataPoint.Attributes())
 	}
 
@@ -812,6 +952,13 @@ func (s *QueryPerformanceScraper) processQueryExecutionPlanMetrics(result models
 			anonymizedSQL := helpers.AnonymizeQueryText(*result.SQLText)
 			attrs.PutStr("query_text", anonymizedSQL)
 		}
+		// Add timestamps in ISO 8601 format
+		if result.CreationTime != nil {
+			attrs.PutStr("creation_time", *result.CreationTime)
+		}
+		if result.LastExecutionTime != nil {
+			attrs.PutStr("last_execution_time", *result.LastExecutionTime)
+		}
 		return attrs
 	}
 
@@ -856,6 +1003,7 @@ func (s *QueryPerformanceScraper) processQueryExecutionPlanMetrics(result models
 	}
 
 	// Create TotalElapsedMs metric - CARDINALITY SAFE
+	// This metric includes all attributes: execution plan XML, timestamps, query details
 	if result.TotalElapsedMs != nil {
 		metric := scopeMetrics.Metrics().AppendEmpty()
 		metric.SetName("sqlserver.individual_query.total_elapsed_ms")
@@ -868,46 +1016,12 @@ func (s *QueryPerformanceScraper) processQueryExecutionPlanMetrics(result models
 		dataPoint.SetStartTimestamp(s.startTime)
 		dataPoint.SetDoubleValue(*result.TotalElapsedMs)
 
-		// Use all attributes including execution plan XML
-		createSafeAttributes().CopyTo(dataPoint.Attributes())
-	}
-
-	// Create CreationTime metric
-	if result.CreationTime != nil {
-		metric := scopeMetrics.Metrics().AppendEmpty()
-		metric.SetName("sqlserver.execution_plan.creation_time")
-		metric.SetDescription("Execution plan creation time (Unix timestamp)")
-		metric.SetUnit("s")
-
-		gauge := metric.SetEmptyGauge()
-		dataPoint := gauge.DataPoints().AppendEmpty()
-		dataPoint.SetTimestamp(timestamp)
-		dataPoint.SetStartTimestamp(s.startTime)
-		dataPoint.SetIntValue(*result.CreationTime)
-
-		// Use all attributes including execution plan XML
-		createSafeAttributes().CopyTo(dataPoint.Attributes())
-	}
-
-	// Create LastExecutionTime metric
-	if result.LastExecutionTime != nil {
-		metric := scopeMetrics.Metrics().AppendEmpty()
-		metric.SetName("sqlserver.execution_plan.last_execution_time")
-		metric.SetDescription("Execution plan last execution time (Unix timestamp)")
-		metric.SetUnit("s")
-
-		gauge := metric.SetEmptyGauge()
-		dataPoint := gauge.DataPoints().AppendEmpty()
-		dataPoint.SetTimestamp(timestamp)
-		dataPoint.SetStartTimestamp(s.startTime)
-		dataPoint.SetIntValue(*result.LastExecutionTime)
-
-		// Use all attributes including execution plan XML
+		// Use all attributes including execution plan XML and timestamps
 		createSafeAttributes().CopyTo(dataPoint.Attributes())
 	}
 
 	// Log detailed information for debugging/analysis
-	s.logger.Debug("Processed query execution plan metrics with execution plan XML included",
+	s.logger.Debug("Processed query execution plan metrics with execution plan XML and timestamps included",
 		logAttributes()...)
 
 	return nil
@@ -915,7 +1029,8 @@ func (s *QueryPerformanceScraper) processQueryExecutionPlanMetrics(result models
 
 // getSlowQueryResults fetches slow query results to extract QueryIDs for execution plan analysis
 func (s *QueryPerformanceScraper) getSlowQueryResults(ctx context.Context, intervalSeconds, topN, elapsedTimeThreshold,
-	textTruncateLimit int) ([]models.SlowQuery, error) {
+	textTruncateLimit int,
+) ([]models.SlowQuery, error) {
 	// Format the slow query with parameters
 	formattedQuery := fmt.Sprintf(queries.SlowQuery, intervalSeconds, topN, elapsedTimeThreshold, textTruncateLimit)
 

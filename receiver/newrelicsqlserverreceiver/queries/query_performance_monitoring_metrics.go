@@ -314,7 +314,8 @@ WITH StatementDetails AS (
 	SELECT
 		qs.plan_handle,
 		qs.sql_handle,
-		-- Extract the query text for the specific statement within the batch
+		-- Extract query text using Microsoft's official offset logic (no +1 on length)
+		-- Reference: https://learn.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-views/sys-dm-exec-query-stats-transact-sql
 		LEFT(SUBSTRING(
 			qt.text,
 			(qs.statement_start_offset / 2) + 1,
@@ -324,8 +325,9 @@ WITH StatementDetails AS (
 					WHEN -1 THEN DATALENGTH(qt.text)
 					ELSE qs.statement_end_offset
 				END - qs.statement_start_offset
-			) / 2 + 1
-		), @TextTruncateLimit) AS query_text, 
+			) / 2
+		), @TextTruncateLimit) AS query_text,
+		-- query_id: SQL Server's query_hash - used for correlating with active query metrics
 		qs.query_hash AS query_id,
 		qs.last_execution_time,
 		qs.execution_count,
@@ -336,6 +338,18 @@ WITH StatementDetails AS (
 		(qs.total_logical_writes / qs.execution_count) AS avg_disk_writes,
 		-- Average rows processed (returned by query)
 		(qs.total_rows / qs.execution_count) AS avg_rows_processed,
+		-- RCA Enhancement Fields: Performance variance
+		qs.min_elapsed_time / 1000.0 AS min_elapsed_time_ms,
+		qs.max_elapsed_time / 1000.0 AS max_elapsed_time_ms,
+		qs.last_elapsed_time / 1000.0 AS last_elapsed_time_ms,
+		-- RCA Enhancement Fields: Memory grants
+		qs.last_grant_kb,
+		qs.last_used_grant_kb,
+		-- RCA Enhancement Fields: TempDB spills
+		qs.last_spills,
+		qs.max_spills,
+		-- RCA Enhancement Fields: Parallelism
+		qs.last_dop,
 		-- Lock wait time approximation: elapsed_time - (cpu_time + io_time)
 		-- NOTE: This is an approximation as dm_exec_query_stats doesn't track lock waits separately
 		-- For precise lock wait time, Query Store wait_category = 4 (Lock waits) should be used
@@ -367,14 +381,9 @@ WITH StatementDetails AS (
 		AND qt.text IS NOT NULL
 		AND LTRIM(RTRIM(qt.text)) <> ''
 		AND DB_NAME(CONVERT(INT, pa.value)) NOT IN ('master', 'model', 'msdb', 'tempdb')
-		AND qs.text NOT LIKE '%%sys.%%'
-		AND qs.text NOT LIKE '%%INFORMATION_SCHEMA%%'
-		AND qs.text NOT LIKE '%%schema_name()%%'
-		AND EXISTS (
-			SELECT 1
-			FROM sys.databases d
-			WHERE d.database_id = CONVERT(INT, pa.value)
-		)
+		AND qt.text NOT LIKE '%%sys.%%'
+		AND qt.text NOT LIKE '%%INFORMATION_SCHEMA%%'
+		AND qt.text NOT LIKE '%%schema_name()%%'
 )
 -- Select the raw, non-aggregated statement data.
 SELECT TOP (@TopN)
@@ -398,6 +407,15 @@ SELECT TOP (@TopN)
     s.avg_rows_processed,
     s.avg_lock_wait_time_ms,
     s.statement_type,
+    -- RCA Enhancement Fields
+    s.min_elapsed_time_ms,
+    s.max_elapsed_time_ms,
+    s.last_elapsed_time_ms,
+    s.last_grant_kb,
+    s.last_used_grant_kb,
+    s.last_spills,
+    s.max_spills,
+    s.last_dop,
     FORMAT(
         SYSDATETIMEOFFSET() AT TIME ZONE 'UTC',
         'yyyy-MM-ddTHH:mm:ssZ'
@@ -414,17 +432,38 @@ DECLARE @Limit INT = %d; -- Define the limit for the number of rows returned
 DECLARE @TextTruncateLimit INT = %d; -- Define the truncate limit for the query text
 WITH blocking_info AS (
     SELECT
+        -- Existing: Basic blocking context
         req.blocking_session_id AS blocking_spid,
         req.session_id AS blocked_spid,
         req.wait_type AS wait_type,
         req.wait_time / 1000.0 AS wait_time_in_seconds,
-        req.start_time AS start_time,
-        sess.status AS status,
-        req.command AS command_type,
+        req.start_time AS blocked_start_time,
+        sess.status AS blocked_status,
+        req.command AS blocked_command_type,
         req.database_id AS database_id,
         req.sql_handle AS blocked_sql_handle,
+
+        -- RCA Enhancement: Lock resource details (WHAT is being locked)
+        req.wait_resource AS wait_resource,
+
+        -- RCA Enhancement: Blocked query performance impact
+        req.total_elapsed_time AS blocked_total_elapsed_ms,
+        req.cpu_time AS blocked_cpu_time_ms,
+        req.logical_reads AS blocked_logical_reads,
+
+        -- RCA Enhancement: Transaction context
+        req.transaction_isolation_level AS blocked_isolation_level,
+        req.open_transaction_count AS blocked_open_transaction_count,
+
+        -- Blocker query details
         blocking_req.sql_handle AS blocking_sql_handle,
-        blocking_req.start_time AS blocking_start_time
+
+        -- RCA Enhancement: Blocker activity context (WHAT is blocker doing)
+        blocking_req.start_time AS blocker_start_time,
+        blocking_req.command AS blocker_command_type,
+        blocking_req.status AS blocker_req_status,  -- From requests (NULL if sleeping)
+        blocking_req.transaction_isolation_level AS blocker_isolation_level,
+        blocking_req.open_transaction_count AS blocker_req_open_transaction_count  -- From requests (NULL if sleeping)
     FROM
         sys.dm_exec_requests AS req
     LEFT JOIN sys.dm_exec_requests AS blocking_req ON blocking_req.session_id = req.blocking_session_id
@@ -433,20 +472,49 @@ WITH blocking_info AS (
         req.blocking_session_id != 0
 )
 SELECT TOP (@Limit)
+    -- Existing: Basic blocking context
     blocking_info.blocking_spid,
     blocking_sessions.status AS blocking_status,
     blocking_info.blocked_spid,
-    blocked_sessions.status AS blocked_status,
+    blocking_info.blocked_status,
     blocking_info.wait_type,
     blocking_info.wait_time_in_seconds,
-    blocking_info.command_type,
-    blocking_info.start_time AS blocked_query_start_time,
+    blocking_info.blocked_command_type AS command_type,
+    FORMAT(blocking_info.blocked_start_time AT TIME ZONE 'UTC', 'yyyy-MM-ddTHH:mm:ssZ') AS blocked_query_start_time,
     DB_NAME(blocking_info.database_id) AS database_name,
+
+    -- RCA Enhancement: Blocker session identity (WHO is causing the block)
+    blocking_sessions.login_name AS blocker_login_name,
+    blocking_sessions.host_name AS blocker_host_name,
+    blocking_sessions.program_name AS blocker_program_name,
+
+    -- RCA Enhancement: Lock resource details (WHAT is being locked)
+    ISNULL(blocking_info.wait_resource, 'N/A') AS wait_resource,
+
+    -- RCA Enhancement: Blocker activity context (WHAT is blocker doing)
+    ISNULL(blocking_info.blocker_command_type, 'N/A') AS blocker_command_type,
+    FORMAT(blocking_info.blocker_start_time AT TIME ZONE 'UTC', 'yyyy-MM-ddTHH:mm:ssZ') AS blocker_start_time,
+    -- Use session status as fallback if blocker is not in dm_exec_requests (i.e., sleeping)
+    COALESCE(blocking_info.blocker_req_status, blocking_sessions.status, 'N/A') AS blocker_status,
+    -- Use session open_transaction_count as fallback if blocker is not in dm_exec_requests
+    COALESCE(blocking_info.blocker_req_open_transaction_count, blocking_sessions.open_transaction_count, 0) AS blocker_open_transaction_count,
+
+    -- RCA Enhancement: Transaction behavior (WHY is it blocking)
+    blocking_info.blocked_isolation_level,
+    ISNULL(blocking_info.blocker_isolation_level, 0) AS blocker_isolation_level,
+    blocking_info.blocked_open_transaction_count,
+
+    -- RCA Enhancement: Blocked query performance impact
+    blocking_info.blocked_total_elapsed_ms,
+    blocking_info.blocked_cpu_time_ms,
+    blocking_info.blocked_logical_reads,
+
+    -- Existing: Query texts
     CASE
         WHEN blocking_sql.text IS NULL THEN LEFT(input_buffer.event_info, @TextTruncateLimit)
         ELSE LEFT(blocking_sql.text, @TextTruncateLimit)
     END AS blocking_query_text,
-    LEFT(blocked_sql.text, @TextTruncateLimit) AS blocked_query_text -- Truncate blocked query text
+    LEFT(blocked_sql.text, @TextTruncateLimit) AS blocked_query_text
 FROM
     blocking_info
 JOIN sys.dm_exec_sessions AS blocking_sessions ON blocking_sessions.session_id = blocking_info.blocking_spid
@@ -454,119 +522,49 @@ JOIN sys.dm_exec_sessions AS blocked_sessions ON blocked_sessions.session_id = b
 OUTER APPLY sys.dm_exec_sql_text(blocking_info.blocking_sql_handle) AS blocking_sql
 OUTER APPLY sys.dm_exec_sql_text(blocking_info.blocked_sql_handle) AS blocked_sql
 OUTER APPLY sys.dm_exec_input_buffer(blocking_info.blocking_spid, NULL) AS input_buffer
-JOIN sys.databases AS db ON db.database_id = blocking_info.database_id
-WHERE db.is_query_store_on = 1
 ORDER BY
-    blocking_info.start_time;`
+    blocking_info.blocked_start_time;`
 
-// RESTORED ORIGINAL WORKING WAIT QUERY - TESTED AND CONFIRMED WORKING
+// WaitQuery - Real-time wait statistics from dm_exec_requests (NO Query Store)
+// This query captures currently waiting queries directly from sys.dm_exec_requests
+// providing real-time wait analysis without Query Store performance overhead
 const WaitQuery = `DECLARE @TopN INT = %d; 				-- Number of results to retrieve
 				DECLARE @TextTruncateLimit INT = %d; 	-- Truncate limit for query_text
-				DECLARE @sql NVARCHAR(MAX) = '';
-				DECLARE @dbName NVARCHAR(128);
-				DECLARE @resultTable TABLE(
-				  query_id VARBINARY(255),
-				  database_name NVARCHAR(128),
-				  query_text NVARCHAR(MAX),
-				  wait_category NVARCHAR(128),
-				  total_wait_time_ms FLOAT,
-				  avg_wait_time_ms FLOAT,
-				  wait_event_count INT,
-				  last_execution_time DATETIME,
-				  collection_timestamp DATETIME
-				);
-				
-				IF CURSOR_STATUS('global', 'db_cursor') > -1
-				BEGIN
-				  CLOSE db_cursor;
-				  DEALLOCATE db_cursor;
-				END
-				
-				DECLARE db_cursor CURSOR FOR
-				SELECT name FROM sys.databases
-				WHERE state_desc = 'ONLINE'
-				AND is_query_store_on = 1
-				AND database_id > 4;
-				
-				OPEN db_cursor;
-				FETCH NEXT FROM db_cursor INTO @dbName;
-				
-				WHILE @@FETCH_STATUS = 0
-				BEGIN
-				  SET @sql = N'USE ' + QUOTENAME(@dbName) + ';
-				  WITH LatestInterval AS (
-					SELECT 
-					  qsqt.query_sql_text, 
-					  MAX(ws.runtime_stats_interval_id) AS max_runtime_stats_interval_id
-					FROM 
-					  sys.query_store_wait_stats ws
-					INNER JOIN 
-					  sys.query_store_plan qsp ON ws.plan_id = qsp.plan_id
-					INNER JOIN 
-					  sys.query_store_query AS qsq ON qsp.query_id = qsq.query_id
-					INNER JOIN 
-					  sys.query_store_query_text AS qsqt ON qsqt.query_text_id = qsq.query_text_id
-					WHERE 
-					  qsqt.query_sql_text NOT LIKE ''%%sys.%%''
-					  AND qsqt.query_sql_text NOT LIKE ''%%INFORMATION_SCHEMA%%''
-					GROUP BY 
-					  qsqt.query_sql_text 
-				  ),
-				  WaitStates AS (
-					SELECT 
-					  ws.runtime_stats_interval_id,
-					  LEFT(qsqt.query_sql_text, ' + CAST(@TextTruncateLimit AS NVARCHAR(4)) + ') AS query_text, -- Truncate query text for the output
-					  qsq.last_execution_time,
-					  ws.wait_category_desc AS wait_category,
-					  ws.total_query_wait_time_ms AS total_wait_time_ms,
-					  ws.avg_query_wait_time_ms AS avg_wait_time_ms,
-					  CASE 
-						WHEN ws.avg_query_wait_time_ms > 0 THEN 
-						  ws.total_query_wait_time_ms / ws.avg_query_wait_time_ms
-						ELSE 
-						  0 
-					  END AS wait_event_count,
-					  qsq.query_hash AS query_id,
-					  GETUTCDATE() AS collection_timestamp,
-					  ''' + @dbName + ''' AS database_name
-					FROM 
-					  sys.query_store_wait_stats ws
-					INNER JOIN 
-					  sys.query_store_plan qsp ON ws.plan_id = qsp.plan_id
-					INNER JOIN 
-					  sys.query_store_query AS qsq ON qsp.query_id = qsq.query_id
-					INNER JOIN 
-					  sys.query_store_query_text AS qsqt ON qsqt.query_text_id = qsq.query_text_id
-					INNER JOIN 
-					  LatestInterval li ON qsqt.query_sql_text = li.query_sql_text 
-							  AND ws.runtime_stats_interval_id = li.max_runtime_stats_interval_id
-					WHERE 
-					  qsqt.query_sql_text NOT LIKE ''%%WITH%%''
-					  AND qsqt.query_sql_text NOT LIKE ''%%sys.%%''
-					  AND qsqt.query_sql_text NOT LIKE ''%%INFORMATION_SCHEMA%%''
-				  )
-				  SELECT
-					query_id,
-					database_name, 
-					query_text,
-					wait_category,
-					total_wait_time_ms,
-					avg_wait_time_ms,
-					wait_event_count,
-					last_execution_time,
-					collection_timestamp
-				  FROM
-					WaitStates;';
-				  
-				  INSERT INTO @resultTable
-					EXEC sp_executesql @sql;
-				
-				  FETCH NEXT FROM db_cursor INTO @dbName;
-				END
-				CLOSE db_cursor;
-				DEALLOCATE db_cursor;
-				SELECT TOP (@TopN) * FROM @resultTable 
-				ORDER BY total_wait_time_ms DESC;`
+
+SELECT TOP (@TopN)
+    r.query_hash AS query_id,
+    DB_NAME(r.database_id) AS database_name,
+    LEFT(SUBSTRING(st.text, (r.statement_start_offset / 2) + 1,
+        ((CASE r.statement_end_offset
+            WHEN -1 THEN DATALENGTH(st.text)
+            ELSE r.statement_end_offset
+        END - r.statement_start_offset) / 2) + 1
+    ), @TextTruncateLimit) AS query_text,
+    -- Categorize wait types
+    CASE
+        WHEN r.wait_type LIKE 'PAGEIOLATCH%%' OR r.wait_type LIKE 'WRITELOG%%' OR r.wait_type LIKE 'IO_COMPLETION%%' THEN 'I/O'
+        WHEN r.wait_type LIKE 'LCK_%%' OR r.wait_type LIKE 'LOCK_%%' THEN 'Lock'
+        WHEN r.wait_type LIKE 'SOS_SCHEDULER_YIELD%%' OR r.wait_type LIKE 'THREADPOOL%%' THEN 'CPU'
+        WHEN r.wait_type LIKE 'NETWORK_%%' OR r.wait_type LIKE 'ASYNC_NETWORK_%%' THEN 'Network'
+        WHEN r.wait_type LIKE 'RESOURCE_SEMAPHORE%%' OR r.wait_type LIKE 'CMEMTHREAD%%' THEN 'Memory'
+        WHEN r.wait_type LIKE 'CXPACKET%%' OR r.wait_type LIKE 'CXCONSUMER%%' THEN 'Parallelism'
+        ELSE 'Other'
+    END AS wait_category,
+    r.wait_time AS total_wait_time_ms,
+    r.wait_time AS avg_wait_time_ms,
+    1 AS wait_event_count,
+    FORMAT(r.start_time AT TIME ZONE 'UTC', 'yyyy-MM-ddTHH:mm:ssZ') AS last_execution_time,
+    FORMAT(SYSDATETIMEOFFSET() AT TIME ZONE 'UTC', 'yyyy-MM-ddTHH:mm:ssZ') AS collection_timestamp
+FROM sys.dm_exec_requests r
+INNER JOIN sys.dm_exec_sessions s ON r.session_id = s.session_id
+CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) st
+WHERE r.session_id > 50
+    AND r.database_id > 4
+    AND r.wait_type IS NOT NULL
+    AND r.wait_time > 0
+    AND st.text NOT LIKE '%%sys.%%'
+    AND st.text NOT LIKE '%%INFORMATION_SCHEMA%%'
+ORDER BY r.wait_time DESC;`
 
 const QueryExecutionPlan = `
 DECLARE @TargetQueryHash BINARY(8) = %s;
@@ -578,8 +576,8 @@ SELECT
     CAST(qp.query_plan AS NVARCHAR(MAX)) AS execution_plan_xml,
     qs.total_worker_time / 1000.0 AS total_cpu_ms,
     qs.total_elapsed_time / 1000.0 AS total_elapsed_ms,
-    DATEDIFF(SECOND, '1970-01-01 00:00:00', qs.creation_time) AS creation_time,
-    DATEDIFF(SECOND, '1970-01-01 00:00:00', qs.last_execution_time) AS last_execution_time,
+    FORMAT(qs.creation_time AT TIME ZONE 'UTC', 'yyyy-MM-ddTHH:mm:ssZ') AS creation_time,
+    FORMAT(qs.last_execution_time AT TIME ZONE 'UTC', 'yyyy-MM-ddTHH:mm:ssZ') AS last_execution_time,
     st.text AS sql_text
 FROM sys.dm_exec_query_stats AS qs
 CROSS APPLY sys.dm_exec_query_plan(qs.plan_handle) AS qp
@@ -596,6 +594,9 @@ WHERE qp.query_plan IS NOT NULL;`
 
 // ActiveRunningQueriesQuery retrieves currently executing queries with wait and blocking details
 // This query captures real-time execution state including wait types, blocking chains, and query text
+//
+// RCA Enhancement: Includes query_hash for correlation with slow queries, with fallback to text hash
+// when query_hash is NULL (queries not yet cached in dm_exec_query_stats)
 const ActiveRunningQueriesQuery = `
 DECLARE @Limit INT = %d; -- Set the maximum number of rows to return
 DECLARE @TextTruncateLimit INT = %d; -- Set the maximum length for query text
@@ -603,19 +604,34 @@ DECLARE @TextTruncateLimit INT = %d; -- Set the maximum length for query text
 SELECT TOP (@Limit)
     -- A. CURRENT SESSION DETAILS
     r_wait.session_id AS current_session_id,
+    r_wait.request_id AS request_id,
     DB_NAME(r_wait.database_id) AS database_name,
     s_wait.login_name AS login_name,
     s_wait.host_name AS host_name,
+    s_wait.program_name AS program_name,
     r_wait.command AS request_command,
+    r_wait.status AS request_status,
 
-    -- B. WAIT DETAILS (Always present for sessions in dm_exec_requests)
+    -- B. CORRELATION KEY (Critical for RCA)
+    -- query_id: SQL Server's query_hash - used for correlating active queries with slow query metrics
+    -- NULL indicates query is not correlatable (ad-hoc SQL with different literals, OPTION(RECOMPILE), etc.)
+    -- Only parameterized queries and stored procedures get consistent query_hash values
+    r_wait.query_hash AS query_id,
+
+    -- C. WAIT DETAILS
     r_wait.wait_type AS wait_type,
     r_wait.wait_time / 1000.0 AS wait_time_s,
     r_wait.wait_resource AS wait_resource,
+    r_wait.last_wait_type AS last_wait_type,
 
-    -- C. PERFORMANCE/EXECUTION METRICS
+    -- D. PERFORMANCE/EXECUTION METRICS
     r_wait.cpu_time AS cpu_time_ms,
     r_wait.total_elapsed_time AS total_elapsed_time_ms,
+    r_wait.reads AS reads,
+    r_wait.writes AS writes,
+    r_wait.logical_reads AS logical_reads,
+    r_wait.row_count AS row_count,
+    r_wait.granted_query_memory AS granted_query_memory_pages,
     FORMAT(
         r_wait.start_time AT TIME ZONE 'UTC',
         'yyyy-MM-ddTHH:mm:ssZ'
@@ -625,7 +641,23 @@ SELECT TOP (@Limit)
         'yyyy-MM-ddTHH:mm:ssZ'
     ) AS collection_timestamp,
 
-    -- D. BLOCKING DETAILS (Show 'N/A' if not blocked)
+    -- E. TRANSACTION CONTEXT (RCA for long-running transactions)
+    r_wait.transaction_id AS transaction_id,
+    r_wait.open_transaction_count AS open_transaction_count,
+    r_wait.transaction_isolation_level AS transaction_isolation_level,
+
+    -- F. PARALLEL EXECUTION DETAILS (RCA for CXPACKET waits)
+    r_wait.dop AS degree_of_parallelism,
+    r_wait.parallel_worker_count AS parallel_worker_count,
+
+    -- G. SESSION CONTEXT
+    s_wait.status AS session_status,
+    s_wait.client_interface_name AS client_interface_name,
+
+    -- H. PLAN HANDLE (for execution plan retrieval)
+    r_wait.plan_handle AS plan_handle,
+
+    -- I. BLOCKING DETAILS
     CASE
         WHEN r_wait.blocking_session_id = 0 THEN 'N/A'
         ELSE CAST(r_wait.blocking_session_id AS NVARCHAR(10))
@@ -633,19 +665,21 @@ SELECT TOP (@Limit)
 
     ISNULL(s_blocker.login_name, 'N/A') AS blocker_login_name,
     ISNULL(s_blocker.host_name, 'N/A') AS blocker_host_name,
+    ISNULL(s_blocker.program_name, 'N/A') AS blocker_program_name,
 
-    -- E. QUERY TEXT - Current Session (Blocked or Waiting)
+    -- J. QUERY TEXT - Current Session
+    -- Extract specific SQL statement from batch using Microsoft's official offset logic
+    -- Reference: https://learn.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-views/sys-dm-exec-query-stats-transact-sql
     LEFT(SUBSTRING(st_wait.text, (r_wait.statement_start_offset / 2) + 1,
         ((CASE r_wait.statement_end_offset
             WHEN -1 THEN DATALENGTH(st_wait.text)
             ELSE r_wait.statement_end_offset
-        END - r_wait.statement_start_offset) / 2) + 1
+        END - r_wait.statement_start_offset) / 2)
     ), @TextTruncateLimit) AS query_statement_text,
 
-    -- F. QUERY TEXT - Blocking Session (Show 'N/A' if not blocked)
+    -- K. QUERY TEXT - Blocking Session
     CASE
         WHEN r_wait.blocking_session_id = 0 THEN 'N/A'
-        -- If blocking, use input_buffer if the blocker is idle (r_blocker.command is NULL), otherwise use the active request text
         WHEN r_blocker.command IS NULL THEN LEFT(ib_blocker.event_info, @TextTruncateLimit)
         ELSE LEFT(SUBSTRING(st_blocker.text, (r_blocker.statement_start_offset / 2) + 1,
             ((CASE r_blocker.statement_end_offset
@@ -672,7 +706,7 @@ OUTER APPLY
 WHERE
     r_wait.session_id > 50
     AND r_wait.database_id > 4
-    AND r_wait.wait_type IS NOT NULL -- Exclude certain system-only states
+    AND r_wait.wait_type IS NOT NULL
 ORDER BY
     r_wait.wait_time DESC;`
 

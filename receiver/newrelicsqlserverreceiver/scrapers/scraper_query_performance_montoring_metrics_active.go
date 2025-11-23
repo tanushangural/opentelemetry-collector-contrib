@@ -311,11 +311,20 @@ func (s *QueryPerformanceScraper) addActiveQueryAttributes(attrs pcommon.Map, re
 	if result.HostName != nil {
 		attrs.PutStr("host_name", *result.HostName)
 	}
+	if result.ProgramName != nil {
+		attrs.PutStr("program_name", *result.ProgramName)
+	}
 	if result.RequestCommand != nil {
 		attrs.PutStr("request_command", *result.RequestCommand)
 	}
 	if result.RequestStatus != nil {
 		attrs.PutStr("request_status", *result.RequestStatus)
+	}
+	if result.SessionStatus != nil {
+		attrs.PutStr("session_status", *result.SessionStatus)
+	}
+	if result.ClientInterfaceName != nil {
+		attrs.PutStr("client_interface_name", *result.ClientInterfaceName)
 	}
 
 	// Wait details
@@ -337,6 +346,25 @@ func (s *QueryPerformanceScraper) addActiveQueryAttributes(attrs pcommon.Map, re
 		attrs.PutStr("collection_timestamp", *result.CollectionTimestamp)
 	}
 
+	// Transaction context (Phase 1 RCA)
+	if result.TransactionID != nil {
+		attrs.PutInt("transaction_id", *result.TransactionID)
+	}
+	if result.OpenTransactionCount != nil {
+		attrs.PutInt("open_transaction_count", *result.OpenTransactionCount)
+	}
+	if result.TransactionIsolationLevel != nil {
+		attrs.PutInt("transaction_isolation_level", *result.TransactionIsolationLevel)
+	}
+
+	// Parallel execution details (Phase 1 RCA)
+	if result.DegreeOfParallelism != nil {
+		attrs.PutInt("degree_of_parallelism", *result.DegreeOfParallelism)
+	}
+	if result.ParallelWorkerCount != nil {
+		attrs.PutInt("parallel_worker_count", *result.ParallelWorkerCount)
+	}
+
 	// Blocking details
 	if result.BlockingSessionID != nil {
 		attrs.PutStr("blocking_session_id", *result.BlockingSessionID)
@@ -347,21 +375,26 @@ func (s *QueryPerformanceScraper) addActiveQueryAttributes(attrs pcommon.Map, re
 	if result.BlockerHostName != nil {
 		attrs.PutStr("blocker_host_name", *result.BlockerHostName)
 	}
+	if result.BlockerProgramName != nil {
+		attrs.PutStr("blocker_program_name", *result.BlockerProgramName)
+	}
 
 	// Query text (anonymized) and query ID for correlation
 	if result.QueryStatementText != nil {
 		anonymizedQuery := helpers.AnonymizeQueryText(*result.QueryStatementText)
 		attrs.PutStr("query_text", anonymizedQuery)
+	}
 
-		// Add SQL Server's native query_id if available (from dm_exec_query_stats)
-		// This enables direct correlation with slow queries
-		if result.QueryID != nil && !result.QueryID.IsEmpty() {
-			attrs.PutStr("query_id", result.QueryID.String())
-		}
+	// Phase 1 RCA: Correlation keys
+	// Add SQL Server's native query_id if available (from dm_exec_query_stats)
+	// This enables direct correlation with slow queries
+	if result.QueryID != nil && !result.QueryID.IsEmpty() {
+		attrs.PutStr("query_id", result.QueryID.String())
+	}
 
-		// ALWAYS compute and add query_signature (normalized hash)
-		// This provides a secondary correlation method for queries not yet cached
-		// or for correlating across different SQL Server instances
+	// ALSO compute and add query_signature (client-side hash) for backwards compatibility
+	// This provides a secondary correlation method for queries not yet cached
+	if result.QueryStatementText != nil {
 		querySignature := helpers.ComputeQueryHash(*result.QueryStatementText)
 		if querySignature != "" {
 			attrs.PutStr("query_signature", querySignature)

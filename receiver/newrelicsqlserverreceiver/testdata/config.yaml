@@ -82,8 +82,8 @@ receivers:
     # Collection interval (how often to collect metrics)
     collection_interval: 60s
 
-    # Lookback window for slow queries (increased to 60s to match collection_interval)
-    query_monitoring_fetch_interval: 60        # seconds - how often to fetch slow queries
+    # Lookback window for slow queries - should be >= collection_interval to avoid missing queries
+    query_monitoring_fetch_interval: 300       # seconds - captures queries from last 5 minutes
     
     # Optional: Initial delay before starting collection
     # initial_delay: 10s
@@ -95,8 +95,8 @@ receivers:
     enable_active_running_queries: true
 
     # Query monitoring thresholds (required when enable_query_monitoring is true)
-    query_monitoring_response_time_threshold: 10  # milliseconds - queries slower than this will be monitored
-    query_monitoring_count_threshold: 5           # minimum execution count for queries to be monitored
+    query_monitoring_response_time_threshold: 1  # milliseconds - capture queries taking > 1ms (effectively all queries)
+    query_monitoring_count_threshold: 20           # minimum execution count for queries to be monitored
     query_monitoring_text_truncate_limit: 4094    # characters - maximum length of SQL text in query monitoring results (4KB - 2 bytes)
 
 # Exporters send telemetry data to destinations

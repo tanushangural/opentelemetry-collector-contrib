@@ -130,10 +130,20 @@ type SlowQuery struct {
 	AvgLockWaitTimeMs      *float64 `db:"avg_lock_wait_time_ms" metric_name:"sqlserver.slowquery.avg_lock_wait_time_ms" source_type:"gauge"`
 	StatementType          *string  `db:"statement_type" metric_name:"sqlserver.slowquery.statement_type" source_type:"attribute"`
 	CollectionTimestamp    *string  `db:"collection_timestamp" metric_name:"collection_timestamp" source_type:"attribute"`
+	// RCA Enhancement Fields
+	MinElapsedTimeMs  *float64 `db:"min_elapsed_time_ms" metric_name:"sqlserver.slowquery.min_elapsed_time_ms" source_type:"gauge"`
+	MaxElapsedTimeMs  *float64 `db:"max_elapsed_time_ms" metric_name:"sqlserver.slowquery.max_elapsed_time_ms" source_type:"gauge"`
+	LastElapsedTimeMs *float64 `db:"last_elapsed_time_ms" metric_name:"sqlserver.slowquery.last_elapsed_time_ms" source_type:"gauge"`
+	LastGrantKB       *float64 `db:"last_grant_kb" metric_name:"sqlserver.slowquery.last_grant_kb" source_type:"gauge"`
+	LastUsedGrantKB   *float64 `db:"last_used_grant_kb" metric_name:"sqlserver.slowquery.last_used_grant_kb" source_type:"gauge"`
+	LastSpills        *float64 `db:"last_spills" metric_name:"sqlserver.slowquery.last_spills" source_type:"gauge"`
+	MaxSpills         *float64 `db:"max_spills" metric_name:"sqlserver.slowquery.max_spills" source_type:"gauge"`
+	LastDOP           *float64 `db:"last_dop" metric_name:"sqlserver.slowquery.last_dop" source_type:"gauge"`
 }
 
-// BlockingSession represents blocking session information
+// BlockingSession represents blocking session information with RCA enhancement fields
 type BlockingSession struct {
+	// Existing fields - Basic blocking context
 	BlockingSPID          *int64   `db:"blocking_spid" metric_name:"sqlserver.blocking.spid" source_type:"gauge"`
 	BlockingStatus        *string  `db:"blocking_status" metric_name:"sqlserver.blocking.status" source_type:"attribute"`
 	BlockedSPID           *int64   `db:"blocked_spid" metric_name:"sqlserver.blocked.spid" source_type:"gauge"`
@@ -145,6 +155,30 @@ type BlockingSession struct {
 	BlockingQueryText     *string  `db:"blocking_query_text" metric_name:"sqlserver.blocking.query_text" source_type:"attribute"`
 	BlockedQueryText      *string  `db:"blocked_query_text" metric_name:"sqlserver.blocked.query_text" source_type:"attribute"`
 	BlockedQueryStartTime *string  `db:"blocked_query_start_time" metric_name:"sqlserver.blocked.query_start_time" source_type:"attribute"`
+
+	// RCA Enhancement: Blocker session identity (WHO is causing the block)
+	BlockerLoginName   *string `db:"blocker_login_name" metric_name:"sqlserver.blocker.login_name" source_type:"attribute"`
+	BlockerHostName    *string `db:"blocker_host_name" metric_name:"sqlserver.blocker.host_name" source_type:"attribute"`
+	BlockerProgramName *string `db:"blocker_program_name" metric_name:"sqlserver.blocker.program_name" source_type:"attribute"`
+
+	// RCA Enhancement: Lock resource details (WHAT is being locked)
+	WaitResource *string `db:"wait_resource" metric_name:"sqlserver.blocking.wait_resource" source_type:"attribute"`
+
+	// RCA Enhancement: Blocker activity context (WHAT is blocker doing)
+	BlockerCommandType          *string `db:"blocker_command_type" metric_name:"sqlserver.blocker.command_type" source_type:"attribute"`
+	BlockerStartTime            *string `db:"blocker_start_time" metric_name:"sqlserver.blocker.start_time" source_type:"attribute"`
+	BlockerStatus               *string `db:"blocker_status" metric_name:"sqlserver.blocker.status" source_type:"attribute"`
+	BlockerOpenTransactionCount *int64  `db:"blocker_open_transaction_count" metric_name:"sqlserver.blocker.open_transaction_count" source_type:"gauge"`
+
+	// RCA Enhancement: Transaction behavior (WHY is it blocking)
+	BlockedIsolationLevel       *int64 `db:"blocked_isolation_level" metric_name:"sqlserver.blocked.isolation_level" source_type:"attribute"`
+	BlockerIsolationLevel       *int64 `db:"blocker_isolation_level" metric_name:"sqlserver.blocker.isolation_level" source_type:"attribute"`
+	BlockedOpenTransactionCount *int64 `db:"blocked_open_transaction_count" metric_name:"sqlserver.blocked.open_transaction_count" source_type:"gauge"`
+
+	// RCA Enhancement: Blocked query performance impact
+	BlockedTotalElapsedMs *int64 `db:"blocked_total_elapsed_ms" metric_name:"sqlserver.blocked.total_elapsed_ms" source_type:"gauge"`
+	BlockedCPUTimeMs      *int64 `db:"blocked_cpu_time_ms" metric_name:"sqlserver.blocked.cpu_time_ms" source_type:"gauge"`
+	BlockedLogicalReads   *int64 `db:"blocked_logical_reads" metric_name:"sqlserver.blocked.logical_reads" source_type:"gauge"`
 }
 
 // WaitTimeAnalysis represents wait time analysis data for SQL Server queries
@@ -169,8 +203,8 @@ type QueryExecutionPlan struct {
 	SQLText           *string  `db:"sql_text" metric_name:"sql_text" source_type:"attribute"`
 	TotalCPUMs        *float64 `db:"total_cpu_ms" metric_name:"total_cpu_ms" source_type:"gauge"`
 	TotalElapsedMs    *float64 `db:"total_elapsed_ms" metric_name:"total_elapsed_ms" source_type:"gauge"`
-	CreationTime      *int64   `db:"creation_time" metric_name:"creation_time" source_type:"gauge"`
-	LastExecutionTime *int64   `db:"last_execution_time" metric_name:"last_execution_time" source_type:"gauge"`
+	CreationTime      *string  `db:"creation_time" metric_name:"creation_time" source_type:"attribute"`
+	LastExecutionTime *string  `db:"last_execution_time" metric_name:"last_execution_time" source_type:"attribute"`
 	ExecutionPlanXML  *string  `db:"execution_plan_xml" metric_name:"execution_plan_xml" source_type:"attribute"`
 }
 
@@ -233,6 +267,9 @@ type ExecutionPlanAnalysis struct {
 
 // ActiveRunningQuery represents currently executing queries with wait and blocking details
 // This model captures real-time execution state from sys.dm_exec_requests
+//
+// RCA Enhancement: Includes query_hash (query_id) for correlation with slow queries, plus a
+// correlation_query_id fallback that uses text hash when query_hash is NULL (non-cached queries)
 type ActiveRunningQuery struct {
 	// A. Current Session Details
 	CurrentSessionID *int64  `db:"current_session_id" metric_name:"sqlserver.activequery.session_id" source_type:"gauge"`
@@ -240,16 +277,22 @@ type ActiveRunningQuery struct {
 	DatabaseName     *string `db:"database_name" metric_name:"database_name" source_type:"attribute"`
 	LoginName        *string `db:"login_name" metric_name:"login_name" source_type:"attribute"`
 	HostName         *string `db:"host_name" metric_name:"host_name" source_type:"attribute"`
+	ProgramName      *string `db:"program_name" metric_name:"program_name" source_type:"attribute"`
 	RequestCommand   *string `db:"request_command" metric_name:"request_command" source_type:"attribute"`
 	RequestStatus    *string `db:"request_status" metric_name:"request_status" source_type:"attribute"`
 
-	// B. Wait Details
+	// B. Correlation Key (Critical for RCA)
+	// QueryID: SQL Server's query_hash - used for correlating with slow query metrics
+	// NULL for non-cached queries (ad-hoc SQL with different literals, OPTION(RECOMPILE), etc.)
+	QueryID *QueryID `db:"query_id" metric_name:"query_id" source_type:"attribute"`
+
+	// C. Wait Details
 	WaitType     *string  `db:"wait_type" metric_name:"wait_type" source_type:"attribute"`
 	WaitTimeS    *float64 `db:"wait_time_s" metric_name:"sqlserver.activequery.wait_time_seconds" source_type:"gauge"`
 	WaitResource *string  `db:"wait_resource" metric_name:"wait_resource" source_type:"attribute"`
 	LastWaitType *string  `db:"last_wait_type" metric_name:"last_wait_type" source_type:"attribute"`
 
-	// C. Performance/Execution Metrics
+	// D. Performance/Execution Metrics
 	CPUTimeMs               *int64  `db:"cpu_time_ms" metric_name:"sqlserver.activequery.cpu_time_ms" source_type:"gauge"`
 	TotalElapsedTimeMs      *int64  `db:"total_elapsed_time_ms" metric_name:"sqlserver.activequery.elapsed_time_ms" source_type:"gauge"`
 	Reads                   *int64  `db:"reads" metric_name:"sqlserver.activequery.reads" source_type:"gauge"`
@@ -260,21 +303,31 @@ type ActiveRunningQuery struct {
 	RequestStartTime        *string `db:"request_start_time" metric_name:"request_start_time" source_type:"attribute"`
 	CollectionTimestamp     *string `db:"collection_timestamp" metric_name:"collection_timestamp" source_type:"attribute"`
 
-	// D. Blocking Details
-	BlockingSessionID *string `db:"blocking_session_id" metric_name:"blocking_session_id" source_type:"attribute"`
-	BlockerLoginName  *string `db:"blocker_login_name" metric_name:"blocker_login_name" source_type:"attribute"`
-	BlockerHostName   *string `db:"blocker_host_name" metric_name:"blocker_host_name" source_type:"attribute"`
+	// E. Transaction Context (RCA for long-running transactions)
+	TransactionID             *int64 `db:"transaction_id" metric_name:"transaction_id" source_type:"attribute"`
+	OpenTransactionCount      *int64 `db:"open_transaction_count" metric_name:"open_transaction_count" source_type:"gauge"`
+	TransactionIsolationLevel *int64 `db:"transaction_isolation_level" metric_name:"transaction_isolation_level" source_type:"attribute"`
 
-	// E. Query Text
-	QueryStatementText         *string `db:"query_statement_text" metric_name:"query_statement_text" source_type:"attribute"`
-	BlockingQueryStatementText *string `db:"blocking_query_statement_text" metric_name:"blocking_query_statement_text" source_type:"attribute"`
+	// F. Parallel Execution Details (RCA for CXPACKET waits)
+	DegreeOfParallelism *int64 `db:"degree_of_parallelism" metric_name:"degree_of_parallelism" source_type:"gauge"`
+	ParallelWorkerCount *int64 `db:"parallel_worker_count" metric_name:"parallel_worker_count" source_type:"gauge"`
 
-	// F. Plan Handle for conditional execution plan fetching
+	// G. Session Context
+	SessionStatus       *string `db:"session_status" metric_name:"session_status" source_type:"attribute"`
+	ClientInterfaceName *string `db:"client_interface_name" metric_name:"client_interface_name" source_type:"attribute"`
+
+	// H. Plan Handle for execution plan fetching
 	PlanHandle *QueryID `db:"plan_handle" metric_name:"plan_handle" source_type:"attribute"`
 
-	// G. Query ID - SQL Server's native query_hash from dm_exec_query_stats
-	// This is NULL if the query hasn't been cached yet, but enables direct correlation with slow queries
-	QueryID *QueryID `db:"query_id" metric_name:"query_id" source_type:"attribute"`
+	// I. Blocking Details
+	BlockingSessionID  *string `db:"blocking_session_id" metric_name:"blocking_session_id" source_type:"attribute"`
+	BlockerLoginName   *string `db:"blocker_login_name" metric_name:"blocker_login_name" source_type:"attribute"`
+	BlockerHostName    *string `db:"blocker_host_name" metric_name:"blocker_host_name" source_type:"attribute"`
+	BlockerProgramName *string `db:"blocker_program_name" metric_name:"blocker_program_name" source_type:"attribute"`
+
+	// J. Query Text
+	QueryStatementText         *string `db:"query_statement_text" metric_name:"query_statement_text" source_type:"attribute"`
+	BlockingQueryStatementText *string `db:"blocking_query_statement_text" metric_name:"blocking_query_statement_text" source_type:"attribute"`
 }
 
 // LockedObject represents detailed information about database objects locked by a session

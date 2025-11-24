@@ -59,6 +59,148 @@ metrics:
     gauge:
       value_type: int
 
+  # Lock Resource Metrics (what's being locked)
+  sqlserver.lock.resource.total:
+    enabled: true
+    description: Total active locks in the database
+    unit: "1"
+    gauge:
+      value_type: int
+  
+  sqlserver.lock.resource.table:
+    enabled: true
+    description: Number of table-level locks
+    unit: "1"
+    gauge:
+      value_type: int
+      
+  sqlserver.lock.resource.page:
+    enabled: true
+    description: Number of page-level locks
+    unit: "1"
+    gauge:
+      value_type: int
+      
+  sqlserver.lock.resource.row:
+    enabled: true
+    description: Number of row-level locks
+    unit: "1"
+    gauge:
+      value_type: int
+      
+  sqlserver.lock.resource.key:
+    enabled: true
+    description: Number of key-level locks
+    unit: "1"
+    gauge:
+      value_type: int
+      
+  sqlserver.lock.resource.extent:
+    enabled: true
+    description: Number of extent-level locks
+    unit: "1"
+    gauge:
+      value_type: int
+      
+  sqlserver.lock.resource.database_level:
+    enabled: true
+    description: Number of database-level locks
+    unit: "1"
+    gauge:
+      value_type: int
+      
+  sqlserver.lock.resource.file:
+    enabled: true
+    description: Number of file-level locks
+    unit: "1"
+    gauge:
+      value_type: int
+      
+  sqlserver.lock.resource.application:
+    enabled: true
+    description: Number of application locks
+    unit: "1"
+    gauge:
+      value_type: int
+      
+  sqlserver.lock.resource.metadata:
+    enabled: true
+    description: Number of metadata locks
+    unit: "1"
+    gauge:
+      value_type: int
+      
+  sqlserver.lock.resource.hobt:
+    enabled: true
+    description: Number of heap or B-tree locks
+    unit: "1"
+    gauge:
+      value_type: int
+      
+  sqlserver.lock.resource.allocation_unit:
+    enabled: true
+    description: Number of allocation unit locks
+    unit: "1"
+    gauge:
+      value_type: int
+
+  # Lock Mode Metrics (how it's locked)
+  sqlserver.lock.mode.total:
+    enabled: true
+    description: Total active locks by mode
+    unit: "1"
+    gauge:
+      value_type: int
+      
+  sqlserver.lock.mode.shared:
+    enabled: true
+    description: Number of shared locks
+    unit: "1"
+    gauge:
+      value_type: int
+      
+  sqlserver.lock.mode.exclusive:
+    enabled: true
+    description: Number of exclusive locks
+    unit: "1"
+    gauge:
+      value_type: int
+      
+  sqlserver.lock.mode.update:
+    enabled: true
+    description: Number of update locks
+    unit: "1"
+    gauge:
+      value_type: int
+      
+  sqlserver.lock.mode.intent:
+    enabled: true
+    description: Number of intent locks
+    unit: "1"
+    gauge:
+      value_type: int
+      
+  sqlserver.lock.mode.schema:
+    enabled: true
+    description: Number of schema locks
+    unit: "1"
+    gauge:
+      value_type: int
+      
+  sqlserver.lock.mode.bulk_update:
+    enabled: true
+    description: Number of bulk update locks
+    unit: "1"
+    gauge:
+      value_type: int
+      
+  sqlserver.lock.mode.shared_intent_exclusive:
+    enabled: true
+    description: Number of shared intent exclusive locks
+    unit: "1"
+    gauge:
+      value_type: int
+
 tests:
   config:
     hostname: "localhost"

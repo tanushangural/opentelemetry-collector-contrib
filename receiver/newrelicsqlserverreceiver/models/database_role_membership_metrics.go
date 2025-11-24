@@ -1,8 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package models provides data models for SQL Server database role membership metrics.
-// This file implements comprehensive collection of database role membership information
 // showing relationships between roles and their members.
 //
 // Database Role Membership Metrics Overview:

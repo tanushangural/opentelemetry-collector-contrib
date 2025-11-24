@@ -1,8 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package models provides data structures for instance-level metrics and system information.
-// This file defines the data models used to represent SQL Server instance-level performance data
 // including memory management, CPU utilization, I/O operations, connections, and transactions.
 //
 // Instance-Level Data Structures:
@@ -146,7 +144,7 @@ type InstanceMemoryDefinitionsModel struct {
 
 // InstanceStatsModel represents comprehensive instance statistics
 // Note: SQL Server performance counters with "/sec" suffix are PERF_COUNTER_BULK_COUNT (272696576)
-// which are cumulative counters. We calculate the delta/rate ourselves like nri-mssql does.
+// which are cumulative counters. We calculate the delta/rate ourselves.
 type InstanceStatsModel struct {
 	SQLCompilations            *int64   `db:"sql_compilations" metric_name:"sqlserver.stats.sql_compilations_per_sec" source_type:"rate" description:"SQL compilations per second" unit:"1/s"`
 	SQLRecompilations          *int64   `db:"sql_recompilations" metric_name:"sqlserver.stats.sql_recompilations_per_sec" source_type:"rate" description:"SQL recompilations per second" unit:"1/s"`

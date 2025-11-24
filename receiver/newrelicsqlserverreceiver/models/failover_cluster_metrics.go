@@ -1,8 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package models provides data structures for failover cluster-level metrics and information.
-// This file defines the data models used to represent SQL Server Always On Availability Groups
 // and failover cluster performance metrics for high availability environments.
 //
 // Failover Cluster-Level Data Structures:

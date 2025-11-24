@@ -1,8 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package queries provides SQL query definitions for security-level metrics.
-// This file contains all SQL queries for collecting SQL Server security metrics.
 //
 // Security Metrics Categories:
 //
@@ -36,8 +34,6 @@
 // - No exposure of usernames, passwords, or security tokens
 package queries
 
-// SecurityPrincipalsQuery returns the SQL query for server principals count metrics
 const SecurityPrincipalsQuery = `SELECT COUNT(*) AS server_principals_count FROM sys.server_principals WITH (nolock)`
 
-// SecurityRoleMembersQuery returns the SQL query for server role membership count metrics
 const SecurityRoleMembersQuery = `SELECT COUNT(*) AS server_role_members_count FROM sys.server_role_members WITH (nolock)`

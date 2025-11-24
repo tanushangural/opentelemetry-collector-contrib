@@ -113,7 +113,7 @@
 package models
 
 // SlowQuery represents slow query performance data collected from SQL Server
-// This struct is modeled after nri-mssql's TopNSlowQueryDetails for compatibility
+// This struct provides compatibility with the existing data structure format
 type SlowQuery struct {
 	QueryID                *QueryID `db:"query_id" metric_name:"query_id" source_type:"attribute"`
 	PlanHandle             *QueryID `db:"plan_handle" metric_name:"plan_handle" source_type:"attribute"`
@@ -144,7 +144,7 @@ type SlowQuery struct {
 // BlockingSession represents blocking session information with RCA enhancement fields
 type BlockingSession struct {
 	// Existing fields - Basic blocking context
-	BlockingSPID          *int64   `db:"blocking_spid" metric_name:"sqlserver.blocking.spid" source_type:"gauge"`
+		BlockingSPID          *int64   `db:"blocking_spid" metric_name:"sqlserver.blocking.spid" source_type:"gauge"`
 	BlockingStatus        *string  `db:"blocking_status" metric_name:"sqlserver.blocking.status" source_type:"attribute"`
 	BlockedSPID           *int64   `db:"blocked_spid" metric_name:"sqlserver.blocked.spid" source_type:"gauge"`
 	BlockedStatus         *string  `db:"blocked_status" metric_name:"sqlserver.blocked.status" source_type:"attribute"`

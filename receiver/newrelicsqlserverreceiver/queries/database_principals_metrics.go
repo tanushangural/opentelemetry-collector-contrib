@@ -1,8 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package queries provides SQL queries for collecting SQL Server database principals metrics.
-// This file implements comprehensive collection of database security principals information
 // including users, roles, and related security metadata.
 //
 // Database Principals Overview:
@@ -48,8 +46,6 @@
 // ORDER BY type_desc, principal_name
 package queries
 
-// DatabasePrincipalsQuery returns the SQL query for database principals information
-// This query retrieves all non-fixed role database principals with their metadata
 // Excludes system fixed roles and extended properties users for security auditing
 const DatabasePrincipalsQuery = `SELECT 
     p.name AS principal_name,
@@ -62,16 +58,13 @@ WHERE p.is_fixed_role = 0
     AND p.name NOT IN ('guest', 'INFORMATION_SCHEMA', 'sys')  -- Exclude additional system principals
 ORDER BY p.type_desc, p.name`
 
-// DatabasePrincipalsQueryAzureSQL returns the Azure SQL Database specific principals query
 // Azure SQL Database has the same sys.database_principals view structure
 const DatabasePrincipalsQueryAzureSQL = DatabasePrincipalsQuery
 
-// DatabasePrincipalsQueryAzureMI returns the Azure SQL Managed Instance specific principals query
 // Azure SQL Managed Instance supports the same functionality as standard SQL Server
 const DatabasePrincipalsQueryAzureMI = DatabasePrincipalsQuery
 
 // DatabasePrincipalsSummaryQuery returns aggregated statistics about database principals
-// This query provides counts by principal type for monitoring and alerting
 const DatabasePrincipalsSummaryQuery = `SELECT 
     DB_NAME() AS database_name,
     COUNT(*) AS total_principals,
@@ -85,14 +78,11 @@ WHERE p.is_fixed_role = 0
     AND p.type <> 'X'
     AND p.name NOT IN ('guest', 'INFORMATION_SCHEMA', 'sys')`
 
-// DatabasePrincipalsSummaryQueryAzureSQL returns the Azure SQL Database specific summary query
 const DatabasePrincipalsSummaryQueryAzureSQL = DatabasePrincipalsSummaryQuery
 
-// DatabasePrincipalsSummaryQueryAzureMI returns the Azure SQL Managed Instance specific summary query
 const DatabasePrincipalsSummaryQueryAzureMI = DatabasePrincipalsSummaryQuery
 
 // DatabasePrincipalActivityQuery returns information about principal activity and lifecycle
-// This query helps identify recently created principals and potential orphaned users
 const DatabasePrincipalActivityQuery = `SELECT 
     DB_NAME() AS database_name,
     SUM(CASE WHEN create_date >= DATEADD(day, -30, GETDATE()) THEN 1 ELSE 0 END) AS recent_principals,
@@ -114,7 +104,6 @@ WHERE p.is_fixed_role = 0
     AND p.type <> 'X'
     AND p.name NOT IN ('guest', 'INFORMATION_SCHEMA', 'sys')`
 
-// DatabasePrincipalActivityQueryAzureSQL returns the Azure SQL Database specific activity query
 // Azure SQL Database may have different orphaned user detection logic
 const DatabasePrincipalActivityQueryAzureSQL = `SELECT 
     DB_NAME() AS database_name,
@@ -127,12 +116,10 @@ WHERE p.is_fixed_role = 0
     AND p.type <> 'X'
     AND p.name NOT IN ('guest', 'INFORMATION_SCHEMA', 'sys')`
 
-// DatabasePrincipalActivityQueryAzureMI returns the Azure SQL Managed Instance specific activity query
 // Azure SQL Managed Instance supports the same orphaned user detection as standard SQL Server
 const DatabasePrincipalActivityQueryAzureMI = DatabasePrincipalActivityQuery
 
 // DatabasePrincipalDetailQuery returns detailed information about a specific principal
-// This query can be used for troubleshooting or detailed principal analysis
 const DatabasePrincipalDetailQuery = `SELECT 
     p.name AS principal_name,
     p.type_desc,
@@ -159,14 +146,11 @@ WHERE p.is_fixed_role = 0
     AND p.name = ?  -- Parameter for specific principal lookup
 ORDER BY p.type_desc, p.name`
 
-// DatabasePrincipalDetailQueryAzureSQL returns the Azure SQL Database specific detail query
 const DatabasePrincipalDetailQueryAzureSQL = DatabasePrincipalDetailQuery
 
-// DatabasePrincipalDetailQueryAzureMI returns the Azure SQL Managed Instance specific detail query
 const DatabasePrincipalDetailQueryAzureMI = DatabasePrincipalDetailQuery
 
 // DatabasePrincipalRoleMembersQuery returns information about role membership
-// This query shows which users belong to which roles for security analysis
 const DatabasePrincipalRoleMembersQuery = `SELECT 
     r.name AS role_name,
     r.type_desc AS role_type,
@@ -180,8 +164,6 @@ WHERE r.is_fixed_role = 0  -- Only custom roles
     AND m.is_fixed_role = 0  -- Only custom members
 ORDER BY r.name, m.name`
 
-// DatabasePrincipalRoleMembersQueryAzureSQL returns the Azure SQL Database specific role members query
 const DatabasePrincipalRoleMembersQueryAzureSQL = DatabasePrincipalRoleMembersQuery
 
-// DatabasePrincipalRoleMembersQueryAzureMI returns the Azure SQL Managed Instance specific role members query
 const DatabasePrincipalRoleMembersQueryAzureMI = DatabasePrincipalRoleMembersQuery

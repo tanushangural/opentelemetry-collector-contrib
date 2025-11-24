@@ -1,8 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package queries provides the EngineSet pattern for SQL Server engine-specific query selection.
-// This file implements the generic EngineSet structure that allows different query sets
 // based on the SQL Server engine edition (Default, Azure SQL Database, Azure SQL Managed Instance).
 //
 // EngineSet Pattern Implementation:
@@ -104,6 +102,7 @@ const (
 	DatabasePrincipalsQueries
 	DatabaseRoleMembershipQueries
 	WaitTimeQueries // Add this new type
+	LockQueries     // Add lock queries support
 )
 
 // QueryDefinition represents a SQL query with metadata
@@ -876,6 +875,48 @@ var waitTimeQueriesAzureManagedInstance = []*QueryDefinition{
 	},
 }
 
+// Lock query definitions for default SQL Server
+var lockQueriesDefault = []*QueryDefinition{
+	{
+		Query:       LockResourceQuery,
+		MetricName:  "sqlserver.lock.resource",
+		Description: "SQL Server lock resource metrics showing what resources are being locked",
+	},
+	{
+		Query:       LockModeQuery,
+		MetricName:  "sqlserver.lock.mode",
+		Description: "SQL Server lock mode metrics showing how resources are being locked",
+	},
+}
+
+// Lock query definitions for Azure SQL Database
+var lockQueriesAzureManagedDatabase = []*QueryDefinition{
+	{
+		Query:       LockResourceQuery,
+		MetricName:  "sqlserver.lock.resource",
+		Description: "SQL Server lock resource metrics for Azure SQL Database",
+	},
+	{
+		Query:       LockModeQuery,
+		MetricName:  "sqlserver.lock.mode",
+		Description: "SQL Server lock mode metrics for Azure SQL Database",
+	},
+}
+
+// Lock query definitions for Azure SQL Managed Instance
+var lockQueriesAzureManagedInstance = []*QueryDefinition{
+	{
+		Query:       LockResourceQuery,
+		MetricName:  "sqlserver.lock.resource",
+		Description: "SQL Server lock resource metrics for Azure SQL Managed Instance",
+	},
+	{
+		Query:       LockModeQuery,
+		MetricName:  "sqlserver.lock.mode",
+		Description: "SQL Server lock mode metrics for Azure SQL Managed Instance",
+	},
+}
+
 // queryDefinitionSets maps query types to engine-specific query sets
 var queryDefinitionSets = map[QueryDefinitionType]EngineSet[[]*QueryDefinition]{
 	InstanceQueries: {
@@ -912,6 +953,11 @@ var queryDefinitionSets = map[QueryDefinitionType]EngineSet[[]*QueryDefinition]{
 		Default:                 waitTimeQueriesDefault,
 		AzureSQLDatabase:        waitTimeQueriesAzureManagedDatabase,
 		AzureSQLManagedInstance: waitTimeQueriesAzureManagedInstance,
+	},
+	LockQueries: {
+		Default:                 lockQueriesDefault,
+		AzureSQLDatabase:        lockQueriesAzureManagedDatabase,
+		AzureSQLManagedInstance: lockQueriesAzureManagedInstance,
 	},
 }
 

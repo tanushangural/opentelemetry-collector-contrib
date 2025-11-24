@@ -1,8 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package queries provides SQL query definitions for failover cluster-level metrics.
-// This file contains SQL queries for collecting SQL Server Always On Availability Group
 // replica performance metrics when running in high availability failover cluster environments.
 //
 // Failover Cluster Metrics Categories:
@@ -32,8 +30,6 @@
 // - Requires appropriate permissions to query performance counter DMVs
 package queries
 
-// FailoverClusterReplicaQuery returns the SQL query for Always On replica performance metrics
-// This query uses GROUP BY approach to aggregate performance counter data by instance name
 // Source: sys.dm_os_performance_counters for Database Replica performance counters
 //
 // The query returns:
@@ -58,8 +54,6 @@ WHERE
 GROUP BY
     instance_name;`
 
-// FailoverClusterReplicaStateQuery returns the SQL query for Always On replica state metrics with extended information
-// This query joins availability replica information with database replica states to provide
 // detailed log send/redo queue metrics and synchronization state for each database in the availability group
 //
 // The query returns:
@@ -101,8 +95,6 @@ JOIN
 JOIN
     sys.databases AS d ON drs.database_id = d.database_id;`
 
-// FailoverClusterAvailabilityGroupHealthQuery returns the SQL query for Availability Group health status with extended configuration
-// This query retrieves health, role, and configuration information for all availability group replicas
 //
 // The query returns:
 // - replica_server_name: Name of the server instance hosting the availability replica
@@ -133,8 +125,6 @@ FROM
 INNER JOIN
     sys.availability_replicas AS ar ON ars.replica_id = ar.replica_id;`
 
-// FailoverClusterAvailabilityGroupQuery returns the SQL query for Availability Group configuration metrics
-// This query retrieves configuration settings for all availability groups
 //
 // The query returns:
 // - group_name: Name of the availability group
@@ -153,8 +143,6 @@ const FailoverClusterAvailabilityGroupQuery = `SELECT
 FROM
     sys.availability_groups AS ag;`
 
-// FailoverClusterRedoQueueQuery returns the SQL query for Always On redo queue metrics
-// This query retrieves log send/redo queue information for monitoring replication lag
 // and redo performance in availability groups. Compatible with both Standard SQL Server
 // and Azure SQL Managed Instance.
 //

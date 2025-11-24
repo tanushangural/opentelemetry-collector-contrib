@@ -1,8 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package queries provides SQL query definitions for user connection metrics.
-// This file contains all SQL queries for collecting user connection status information.
 //
 // User Connection Metrics Queries:
 //
@@ -33,8 +31,6 @@
 // - No locks or blocking operations
 package queries
 
-// UserConnectionStatusQuery returns the SQL query for user connection status distribution
-// This query groups user connections by their current status to identify patterns and issues
 //
 // The query returns:
 // - status: Current status of the user session (running, sleeping, suspended, etc.)
@@ -51,7 +47,6 @@ FROM sys.dm_exec_sessions WITH (NOLOCK)
 WHERE is_user_process = 1
 GROUP BY status`
 
-// UserConnectionStatusQueryAzureSQL returns the same query for Azure SQL Database
 // Azure SQL Database supports full session monitoring within the database scope
 const UserConnectionStatusQueryAzureSQL = `SELECT 
     status,
@@ -60,7 +55,6 @@ FROM sys.dm_exec_sessions
 WHERE is_user_process = 1
 GROUP BY status`
 
-// UserConnectionStatusQueryAzureMI returns the same query for Azure SQL Managed Instance
 // Azure SQL Managed Instance has full session monitoring capabilities
 const UserConnectionStatusQueryAzureMI = `SELECT 
     status,
@@ -70,7 +64,6 @@ WHERE is_user_process = 1
 GROUP BY status`
 
 // UserConnectionSummaryQuery returns aggregated user connection statistics
-// This query provides pre-calculated summary metrics for common monitoring scenarios
 //
 // The query returns:
 // - total_user_connections: Total count of user connections
@@ -89,7 +82,6 @@ const UserConnectionSummaryQuery = `SELECT
 FROM sys.dm_exec_sessions WITH (NOLOCK)
 WHERE is_user_process = 1`
 
-// UserConnectionSummaryQueryAzureSQL returns the summary query for Azure SQL Database
 const UserConnectionSummaryQueryAzureSQL = `SELECT 
     COUNT(*) AS total_user_connections,
     SUM(CASE WHEN status = 'sleeping' THEN 1 ELSE 0 END) AS sleeping_connections,
@@ -100,7 +92,6 @@ const UserConnectionSummaryQueryAzureSQL = `SELECT
 FROM sys.dm_exec_sessions
 WHERE is_user_process = 1`
 
-// UserConnectionSummaryQueryAzureMI returns the summary query for Azure SQL Managed Instance
 const UserConnectionSummaryQueryAzureMI = `SELECT 
     COUNT(*) AS total_user_connections,
     SUM(CASE WHEN status = 'sleeping' THEN 1 ELSE 0 END) AS sleeping_connections,
@@ -112,7 +103,6 @@ FROM sys.dm_exec_sessions WITH (NOLOCK)
 WHERE is_user_process = 1`
 
 // UserConnectionUtilizationQuery returns connection utilization metrics
-// This query calculates percentage-based metrics for connection efficiency analysis
 //
 // The query returns:
 // - active_connection_ratio: Percentage of connections actively working
@@ -147,7 +137,6 @@ SELECT
     END AS connection_efficiency
 FROM ConnectionStats`
 
-// UserConnectionUtilizationQueryAzureSQL returns the utilization query for Azure SQL Database
 const UserConnectionUtilizationQueryAzureSQL = `WITH ConnectionStats AS (
     SELECT 
         COUNT(*) AS total_connections,
@@ -176,7 +165,6 @@ SELECT
     END AS connection_efficiency
 FROM ConnectionStats`
 
-// UserConnectionUtilizationQueryAzureMI returns the utilization query for Azure SQL Managed Instance
 const UserConnectionUtilizationQueryAzureMI = `WITH ConnectionStats AS (
     SELECT 
         COUNT(*) AS total_connections,
@@ -205,8 +193,6 @@ SELECT
     END AS connection_efficiency
 FROM ConnectionStats`
 
-// UserConnectionByClientQuery returns the SQL query for user connections grouped by client and program
-// This query shows connection distribution by source host and application
 //
 // The query returns:
 // - host_name: Name of the client host/machine making the connection
@@ -227,7 +213,6 @@ WHERE is_user_process = 1
 GROUP BY host_name, program_name
 ORDER BY connection_count DESC`
 
-// UserConnectionByClientQueryAzureSQL returns the same query for Azure SQL Database
 const UserConnectionByClientQueryAzureSQL = `SELECT 
     ISNULL(host_name, 'Unknown') AS host_name,
     ISNULL(program_name, 'Unknown') AS program_name,
@@ -237,7 +222,6 @@ WHERE is_user_process = 1
 GROUP BY host_name, program_name
 ORDER BY connection_count DESC`
 
-// UserConnectionByClientQueryAzureMI returns the same query for Azure SQL Managed Instance
 const UserConnectionByClientQueryAzureMI = `SELECT 
     ISNULL(host_name, 'Unknown') AS host_name,
     ISNULL(program_name, 'Unknown') AS program_name,
@@ -248,7 +232,6 @@ GROUP BY host_name, program_name
 ORDER BY connection_count DESC`
 
 // UserConnectionClientSummaryQuery returns aggregated statistics about client connections
-// This query provides summary metrics for connection source analysis
 //
 // The query returns:
 // - unique_hosts: Count of distinct client hosts
@@ -292,7 +275,6 @@ SELECT
     (SELECT COUNT(*) FROM HostStats WHERE programs_per_host > 1) AS hosts_with_multiple_programs,
     (SELECT COUNT(*) FROM ProgramStats WHERE hosts_per_program > 1) AS programs_from_multiple_hosts`
 
-// UserConnectionClientSummaryQueryAzureSQL returns the client summary query for Azure SQL Database
 const UserConnectionClientSummaryQueryAzureSQL = `WITH ClientStats AS (
     SELECT 
         host_name,
@@ -328,7 +310,6 @@ SELECT
     (SELECT COUNT(*) FROM HostStats WHERE programs_per_host > 1) AS hosts_with_multiple_programs,
     (SELECT COUNT(*) FROM ProgramStats WHERE hosts_per_program > 1) AS programs_from_multiple_hosts`
 
-// UserConnectionClientSummaryQueryAzureMI returns the client summary query for Azure SQL Managed Instance
 const UserConnectionClientSummaryQueryAzureMI = `WITH ClientStats AS (
     SELECT 
         host_name,
@@ -364,8 +345,6 @@ SELECT
     (SELECT COUNT(*) FROM HostStats WHERE programs_per_host > 1) AS hosts_with_multiple_programs,
     (SELECT COUNT(*) FROM ProgramStats WHERE hosts_per_program > 1) AS programs_from_multiple_hosts`
 
-// LoginLogoutQuery returns the SQL query for login and logout rate metrics with user details
-// This query retrieves authentication activity with username and source IP information
 //
 // The query returns:
 // - counter_name: Name of the performance counter (Logins/sec, Logouts/sec)
@@ -402,7 +381,6 @@ SELECT
 FROM auth_counters ac
 CROSS JOIN user_sessions us`
 
-// LoginLogoutQueryAzureSQL returns the same query for Azure SQL Database with user details
 const LoginLogoutQueryAzureSQL = `WITH auth_counters AS (
     SELECT
         RTRIM(counter_name) AS counter_name,
@@ -427,7 +405,6 @@ SELECT
 FROM auth_counters ac
 CROSS JOIN user_sessions us`
 
-// LoginLogoutQueryAzureMI returns the same query for Azure SQL Managed Instance with user details
 const LoginLogoutQueryAzureMI = `WITH auth_counters AS (
     SELECT
         RTRIM(counter_name) AS counter_name,
@@ -453,7 +430,6 @@ FROM auth_counters ac
 CROSS JOIN user_sessions us`
 
 // LoginLogoutSummaryQuery returns aggregated login/logout statistics with user grouping
-// This query provides summary metrics for authentication activity analysis per user/host
 //
 // The query returns:
 // - logins_per_sec: Current login rate per second
@@ -495,7 +471,6 @@ FROM AuthStats
 CROSS JOIN user_sessions us
 GROUP BY us.username, us.source_ip`
 
-// LoginLogoutSummaryQueryAzureSQL returns the summary query for Azure SQL Database with user grouping
 const LoginLogoutSummaryQueryAzureSQL = `WITH AuthStats AS (
     SELECT
         CASE WHEN counter_name = 'Logins/sec' THEN cntr_value ELSE 0 END AS logins_per_sec,
@@ -527,7 +502,6 @@ FROM AuthStats
 CROSS JOIN user_sessions us
 GROUP BY us.username, us.source_ip`
 
-// LoginLogoutSummaryQueryAzureMI returns the summary query for Azure SQL Managed Instance with user grouping
 const LoginLogoutSummaryQueryAzureMI = `WITH AuthStats AS (
     SELECT
         CASE WHEN counter_name = 'Logins/sec' THEN cntr_value ELSE 0 END AS logins_per_sec,
@@ -559,8 +533,6 @@ FROM AuthStats
 CROSS JOIN user_sessions us
 GROUP BY us.username, us.source_ip`
 
-// FailedLoginQuery returns the SQL query for failed login attempts from error log with user extraction
-// This query reads the SQL Server Error Log and extracts username and source IP from failed login messages
 const FailedLoginQuery = `
 DECLARE @FailedLogins TABLE (
     LogDate DATETIME,
@@ -593,7 +565,6 @@ SELECT
     END AS source_ip
 FROM @FailedLogins`
 
-// FailedLoginQueryAzureSQL returns the failed login query for Azure SQL Database with user extraction
 // Azure SQL Database uses sys.event_log to track connection failures and authentication events
 const FailedLoginQueryAzureSQL = `SELECT
     event_type,
@@ -612,7 +583,6 @@ WHERE
 ORDER BY
     start_time DESC`
 
-// FailedLoginQueryAzureMI returns the failed login query for Azure SQL Managed Instance with user extraction
 const FailedLoginQueryAzureMI = `
 DECLARE @FailedLogins TABLE (
     LogDate DATETIME,
@@ -646,7 +616,6 @@ SELECT
 FROM @FailedLogins`
 
 // FailedLoginSummaryQuery returns aggregated statistics about failed login attempts with user grouping
-// This query analyzes the SQL Server error log for failed login patterns and statistics grouped by user/IP
 const FailedLoginSummaryQuery = `
 DECLARE @FailedLogins TABLE (
     LogDate DATETIME,
@@ -696,8 +665,6 @@ SELECT
 FROM FilteredLogins
 GROUP BY failed_user, source_ip`
 
-// FailedLoginSummaryQueryAzureSQL returns summary statistics for Azure SQL Database using sys.event_log with user grouping
-// This query aggregates connection failure events from the event log for monitoring purposes grouped by user/IP
 const FailedLoginSummaryQueryAzureSQL = `WITH failed_events AS (
     SELECT 
         start_time,
@@ -717,7 +684,6 @@ SELECT
 FROM failed_events
 GROUP BY username, source_ip`
 
-// FailedLoginSummaryQueryAzureMI returns the summary query for Azure SQL Managed Instance with user grouping
 // Azure SQL Managed Instance supports sp_readerrorlog with full functionality
 const FailedLoginSummaryQueryAzureMI = `
 DECLARE @FailedLogins TABLE (

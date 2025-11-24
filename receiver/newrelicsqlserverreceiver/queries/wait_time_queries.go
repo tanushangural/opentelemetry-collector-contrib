@@ -1,8 +1,6 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package queries provides SQL query definitions for wait time metrics.
-// This file contains all SQL queries related to SQL Server wait statistics collection.
 package queries
 
 // WaitTimeMetricsQuery contains the SQL query for collecting wait time statistics

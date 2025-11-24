@@ -1,14 +1,8 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package queries provides SQL query definitions for system-level metrics.
-// This file contains SQL queries for collecting comprehensive host and SQL Server system information
-// that is automatically added as resource attributes to all metrics.
 package queries
 
-// SystemInformationQuery returns comprehensive system and host information for SQL Server instance
-// This query collects essential host/system context that should be included as resource attributes
-// with all metrics sent by the scraper. Only includes information available across all SQL Server editions.
 const SystemInformationQuery = `
 SET DEADLOCK_PRIORITY -10;
 

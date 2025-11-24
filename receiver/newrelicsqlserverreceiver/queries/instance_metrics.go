@@ -1,55 +1,8 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package queries provides SQL query definitions for instance-level metrics.
-// This file contains all SQL queries for collecting 32 instance-level SQL Server metrics.
-//
-// Instance Metrics Categories (32 total metrics):
-//
-// 1. Memory Metrics:
-//   - Buffer pool size (sys.dm_os_buffer_descriptors)
-//   - Memory usage by clerks (sys.dm_os_memory_clerks)
-//   - Available physical memory (sys.dm_os_sys_memory)
-//   - Page life expectancy (sys.dm_os_performance_counters)
-//   - Memory grants pending/outstanding
-//
-// 2. CPU Metrics:
-//   - CPU utilization percentage (sys.dm_os_ring_buffers)
-//   - SQL Server CPU time vs system CPU time
-//   - Context switches per second
-//   - Work queue usage and parallel query metrics
-//
-// 3. I/O Metrics:
-//   - Total I/O operations (reads/writes per second)
-//   - I/O stall statistics (sys.dm_io_virtual_file_stats)
-//   - Batch requests per second
-//   - Page reads/writes per second
-//
-// 4. Connection/Session Metrics:
-//   - Active connections count (sys.dm_exec_sessions)
-//   - User connections vs system connections
-//   - Logins per second and logouts per second
-//   - Blocked processes count
-//
-// 5. Transaction/Lock Metrics:
-//   - Active transactions count (sys.dm_tran_active_transactions)
-//   - Lock waits per second and lock timeouts
-//   - Deadlocks per second
-//   - Distributed transaction coordinator metrics
-//
-// 6. Database Engine Metrics:
-//   - Compilations per second and re-compilations
-//   - Plan cache hit ratio and plan cache usage
-//   - Backup/restore operations status
-//   - Log flushes per second and log cache usage
-//
-// Engine Support:
-// - Default: Full instance metrics from all DMVs
-// - AzureSQLDatabase: Limited metrics (no OS-level DMVs)
-// - AzureSQLManagedInstance: Most metrics available with some limitations
 package queries
 
-// InstanceBufferPoolQuery returns the SQL query for buffer pool size metrics
 const InstanceBufferPoolQuery = `SELECT
 	Count_big(*) * (8*1024) AS instance_buffer_pool_size
 	FROM sys.dm_os_buffer_descriptors WITH (nolock)
@@ -136,13 +89,11 @@ const InstanceDiskMetricsQuery = `SELECT Sum(total_bytes) AS total_disk_space FR
 
 // New instance metrics queries for enhanced performance monitoring
 
-// InstanceTargetMemoryQuery returns the SQL query for target server memory metrics
 const InstanceTargetMemoryQuery = `SELECT 
     cntr_value AS target_server_memory_kb
     FROM sys.dm_os_performance_counters WITH (nolock) 
     WHERE counter_name = 'Target Server Memory (KB)'`
 
-// InstancePerformanceRatiosQuery returns SQL query for performance efficiency ratios
 const InstancePerformanceRatiosQuery = `SELECT
     CASE WHEN t2.cntr_value > 0 THEN CAST(t1.cntr_value AS FLOAT) / CAST(t2.cntr_value AS FLOAT) ELSE 0 END AS compilations_per_batch,
     CASE WHEN t4.cntr_value > 0 THEN CAST(t3.cntr_value AS FLOAT) / CAST(t4.cntr_value AS FLOAT) ELSE 0 END AS page_splits_per_batch
@@ -152,20 +103,17 @@ const InstancePerformanceRatiosQuery = `SELECT
     (SELECT cntr_value FROM sys.dm_os_performance_counters WITH (nolock) WHERE counter_name = 'Page Splits/sec') t3,
     (SELECT cntr_value FROM sys.dm_os_performance_counters WITH (nolock) WHERE counter_name = 'Batch Requests/sec') t4`
 
-// InstanceIndexMetricsQuery returns SQL query for index performance metrics
 const InstanceIndexMetricsQuery = `SELECT
     cntr_value AS full_scans_per_sec
     FROM sys.dm_os_performance_counters WITH (nolock)
     WHERE counter_name = 'Full Scans/sec'`
 
-// InstanceLockMetricsQuery returns SQL query for lock timeout metrics only
 // Provides lock timeouts per second - removed avg wait time due to incorrect calculation
 const InstanceLockMetricsQuery = `SELECT
     cntr_value AS lock_timeouts_per_sec
     FROM sys.dm_os_performance_counters WITH (nolock) 
     WHERE counter_name = 'Lock Timeouts/sec'`
 
-// InstanceDiskMetricsQueryAzureSQL returns Azure SQL Database specific disk metrics query
 // Azure SQL Database doesn't have access to sys.master_files or sys.dm_os_volume_stats
 // We use database-level disk information instead
 const InstanceDiskMetricsQueryAzureSQL = `SELECT 
@@ -173,7 +121,6 @@ const InstanceDiskMetricsQueryAzureSQL = `SELECT
 FROM sys.database_files
 WHERE state = 0`
 
-// InstanceDiskMetricsQueryAzureMI returns Azure SQL Managed Instance specific disk metrics query
 // Azure SQL Managed Instance supports most sys.master_files functionality
 const InstanceDiskMetricsQueryAzureMI = `SELECT Sum(total_bytes) AS total_disk_space FROM (
 			SELECT DISTINCT

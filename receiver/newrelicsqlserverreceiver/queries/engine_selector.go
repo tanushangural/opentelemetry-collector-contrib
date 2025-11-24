@@ -9,6 +9,7 @@
 //
 //	type EngineSet[T any] struct {
 //	    Default                 T  // Standard SQL Server queries
+//	    AzureSQLDatabase        T  // Azure SQL //	    Default                 T  // Standard SQL Server queries
 //	    AzureSQLDatabase        T  // Azure SQL Database specific queries
 //	    AzureSQLManagedInstance T  // Azure SQL Managed Instance specific queries
 //	}
@@ -102,6 +103,7 @@ const (
 	FailoverClusterQueries
 	DatabasePrincipalsQueries
 	DatabaseRoleMembershipQueries
+	WaitTimeQueries // Add this new type
 )
 
 // QueryDefinition represents a SQL query with metadata
@@ -141,21 +143,6 @@ var instanceQueriesDefault = []*QueryDefinition{
 		Description: "Buffer pool size in bytes",
 	},
 	{
-		Query: `SELECT COUNT(*) as user_connections 
-		FROM sys.dm_exec_sessions 
-		WHERE is_user_process = 1`,
-		MetricName:  "sqlserver.instance.user_connections",
-		Description: "Current number of user connections",
-	},
-	{
-		Query: `SELECT cntr_value as page_life_expectancy
-		FROM sys.dm_os_performance_counters 
-		WHERE counter_name = 'Page life expectancy' 
-		AND object_name LIKE '%Buffer Manager%'`,
-		MetricName:  "sqlserver.instance.page_life_expectancy",
-		Description: "Page life expectancy in seconds",
-	},
-	{
 		Query:       InstanceMemoryDefinitions,
 		MetricName:  "sqlserver.instance.memory_metrics",
 		Description: "SQL Server instance memory metrics",
@@ -190,6 +177,26 @@ var instanceQueriesDefault = []*QueryDefinition{
 		MetricName:  "sqlserver.instance.active_connections",
 		Description: "SQL Server instance active connections",
 	},
+	{
+		Query:       InstanceTargetMemoryQuery,
+		MetricName:  "sqlserver.instance.target_memory_metrics",
+		Description: "SQL Server target server memory metrics",
+	},
+	{
+		Query:       InstancePerformanceRatiosQuery,
+		MetricName:  "sqlserver.instance.performance_ratios_metrics",
+		Description: "SQL Server performance ratio metrics",
+	},
+	{
+		Query:       InstanceIndexMetricsQuery,
+		MetricName:  "sqlserver.instance.index_metrics",
+		Description: "SQL Server index performance metrics",
+	},
+	{
+		Query:       InstanceLockMetricsQuery,
+		MetricName:  "sqlserver.instance.lock_metrics",
+		Description: "SQL Server lock performance metrics",
+	},
 }
 
 var instanceQueriesAzureManagedDatabase = []*QueryDefinition{
@@ -197,6 +204,11 @@ var instanceQueriesAzureManagedDatabase = []*QueryDefinition{
 		Query:       InstanceBufferPoolQuery,
 		MetricName:  "sqlserver.instance.buffer_pool_size",
 		Description: "Buffer pool size in bytes",
+	},
+	{
+		Query:       InstanceStatsQuery,
+		MetricName:  "sqlserver.instance.comprehensive_stats",
+		Description: "Comprehensive SQL Server instance statistics",
 	},
 	{
 		Query:       BufferPoolHitPercentMetricsQuery,
@@ -214,14 +226,29 @@ var instanceQueriesAzureManagedDatabase = []*QueryDefinition{
 		Description: "Number of runnable tasks",
 	},
 	{
-		Query:       InstanceDiskMetricsQuery,
-		MetricName:  "sqlserver.instance.disk_metrics",
-		Description: "SQL Server instance disk metrics",
-	},
-	{
 		Query:       InstanceActiveConnectionsMetricsQuery,
 		MetricName:  "sqlserver.instance.active_connections",
 		Description: "SQL Server instance active connections",
+	},
+	{
+		Query:       InstanceTargetMemoryQuery,
+		MetricName:  "sqlserver.instance.target_memory_metrics",
+		Description: "SQL Server target server memory metrics",
+	},
+	{
+		Query:       InstancePerformanceRatiosQuery,
+		MetricName:  "sqlserver.instance.performance_ratios_metrics",
+		Description: "SQL Server performance ratio metrics",
+	},
+	{
+		Query:       InstanceIndexMetricsQuery,
+		MetricName:  "sqlserver.instance.index_metrics",
+		Description: "SQL Server index performance metrics",
+	},
+	{
+		Query:       InstanceLockMetricsQuery,
+		MetricName:  "sqlserver.instance.lock_metrics",
+		Description: "SQL Server lock performance metrics",
 	},
 }
 
@@ -257,14 +284,34 @@ var instanceQueriesAzureManagedInstance = []*QueryDefinition{
 		Description: "Number of runnable tasks",
 	},
 	{
-		Query:       InstanceDiskMetricsQuery,
+		Query:       InstanceDiskMetricsQueryAzureMI,
 		MetricName:  "sqlserver.instance.disk_metrics",
-		Description: "SQL Server instance disk metrics",
+		Description: "SQL Server instance disk metrics for Azure SQL Managed Instance",
 	},
 	{
 		Query:       InstanceActiveConnectionsMetricsQuery,
 		MetricName:  "sqlserver.instance.active_connections",
 		Description: "SQL Server instance active connections",
+	},
+	{
+		Query:       InstanceTargetMemoryQuery,
+		MetricName:  "sqlserver.instance.target_memory_metrics",
+		Description: "SQL Server target server memory metrics",
+	},
+	{
+		Query:       InstancePerformanceRatiosQuery,
+		MetricName:  "sqlserver.instance.performance_ratios_metrics",
+		Description: "SQL Server performance ratio metrics",
+	},
+	{
+		Query:       InstanceIndexMetricsQuery,
+		MetricName:  "sqlserver.instance.index_metrics",
+		Description: "SQL Server index performance metrics",
+	},
+	{
+		Query:       InstanceLockMetricsQuery,
+		MetricName:  "sqlserver.instance.lock_metrics",
+		Description: "SQL Server lock performance metrics",
 	},
 }
 
@@ -299,6 +346,21 @@ var databaseQueriesDefault = []*QueryDefinition{
 		Query:       DatabaseListQuery,
 		MetricName:  "sqlserver.database.list",
 		Description: "List of user databases for metric collection",
+	},
+	{
+		Query:       DatabaseSizeQuery,
+		MetricName:  "sqlserver.database.size_metrics",
+		Description: "Database size metrics (total and data size in MB)",
+	},
+	{
+		Query:       DatabaseTransactionLogQuery,
+		MetricName:  "sqlserver.database.transaction_log_metrics",
+		Description: "Database transaction log performance metrics",
+	},
+	{
+		Query:       DatabaseLogSpaceUsageQuery,
+		MetricName:  "sqlserver.database.log_space_usage_metrics",
+		Description: "Database log space usage metrics (used log space in MB)",
 	},
 }
 
@@ -344,6 +406,21 @@ var databaseQueriesAzureManagedDatabase = []*QueryDefinition{
 		MetricName:  "sqlserver.database.list",
 		Description: "List of user databases for metric collection (Azure SQL Database)",
 	},
+	{
+		Query:       DatabaseSizeQueryAzureSQL,
+		MetricName:  "sqlserver.database.size_metrics",
+		Description: "Database size metrics for Azure SQL Database",
+	},
+	{
+		Query:       DatabaseTransactionLogQueryAzureDB,
+		MetricName:  "sqlserver.database.transaction_log_metrics",
+		Description: "Database transaction log performance metrics for Azure SQL Database",
+	},
+	{
+		Query:       DatabaseLogSpaceUsageQueryAzureSQL,
+		MetricName:  "sqlserver.database.log_space_usage_metrics",
+		Description: "Database log space usage metrics for Azure SQL Database",
+	},
 }
 
 // Database-level query definitions for Azure SQL Managed Instance
@@ -377,6 +454,21 @@ var databaseQueriesAzureManagedInstance = []*QueryDefinition{
 		Query:       DatabaseListQueryAzureMI,
 		MetricName:  "sqlserver.database.list",
 		Description: "List of user databases for metric collection (Azure SQL Managed Instance)",
+	},
+	{
+		Query:       DatabaseSizeQueryAzureMI,
+		MetricName:  "sqlserver.database.size_metrics",
+		Description: "Database size metrics for Azure SQL Managed Instance",
+	},
+	{
+		Query:       DatabaseTransactionLogQueryAzureMI,
+		MetricName:  "sqlserver.database.transaction_log_metrics",
+		Description: "Database transaction log performance metrics for Azure SQL Managed Instance",
+	},
+	{
+		Query:       DatabaseLogSpaceUsageQueryAzureMI,
+		MetricName:  "sqlserver.database.log_space_usage_metrics",
+		Description: "Database log space usage metrics for Azure SQL Managed Instance",
 	},
 }
 
@@ -539,10 +631,42 @@ var failoverClusterQueriesDefault = []*QueryDefinition{
 		MetricName:  "sqlserver.failover_cluster.replica_state_metrics",
 		Description: "Always On Availability Group database replica state metrics",
 	},
+
 	{
-		Query:       FailoverClusterNodeQuery,
-		MetricName:  "sqlserver.failover_cluster.node_metrics",
-		Description: "Windows Server Failover Cluster node information and status",
+		Query:       FailoverClusterAvailabilityGroupHealthQuery,
+		MetricName:  "sqlserver.failover_cluster.availability_group_health_metrics",
+		Description: "Always On Availability Group health status metrics",
+	},
+	{
+		Query:       FailoverClusterAvailabilityGroupQuery,
+		MetricName:  "sqlserver.failover_cluster.availability_group_metrics",
+		Description: "Always On Availability Group configuration metrics",
+	},
+	{
+		Query:       FailoverClusterRedoQueueQuery,
+		MetricName:  "sqlserver.failover_cluster.redo_queue_metrics",
+		Description: "Always On Availability Group redo queue metrics",
+	},
+}
+
+// Failover cluster query definitions for Azure SQL Database
+// Azure SQL Database does not support Always On Availability Groups (single database model)
+// Therefore no failover cluster metrics are applicable
+var failoverClusterQueriesAzureManagedDatabase = []*QueryDefinition{
+	// Empty array - no failover cluster support in Azure SQL Database
+}
+
+// Failover cluster query definitions for Azure SQL Managed Instance
+var failoverClusterQueriesAzureManagedInstance = []*QueryDefinition{
+	{
+		Query:       FailoverClusterReplicaQuery,
+		MetricName:  "sqlserver.failover_cluster.replica_metrics",
+		Description: "Always On Availability Group replica performance metrics",
+	},
+	{
+		Query:       FailoverClusterReplicaStateQuery,
+		MetricName:  "sqlserver.failover_cluster.replica_state_metrics",
+		Description: "Always On Availability Group database replica state metrics",
 	},
 	{
 		Query:       FailoverClusterAvailabilityGroupHealthQuery,
@@ -555,92 +679,14 @@ var failoverClusterQueriesDefault = []*QueryDefinition{
 		Description: "Always On Availability Group configuration metrics",
 	},
 	{
-		Query:       FailoverClusterPerformanceCounterQuery,
-		MetricName:  "sqlserver.failover_cluster.performance_counter_metrics",
-		Description: "Always On Availability Group performance counter metrics",
+		Query:       FailoverClusterRedoQueueQuery,
+		MetricName:  "sqlserver.failover_cluster.redo_queue_metrics",
+		Description: "Always On Availability Group redo queue metrics",
 	},
 	{
-		Query:       FailoverClusterClusterPropertiesQuery,
-		MetricName:  "sqlserver.failover_cluster.cluster_properties_metrics",
-		Description: "Windows Server Failover Cluster properties and quorum information",
-	},
-}
-
-// Failover cluster query definitions for Azure SQL Database
-var failoverClusterQueriesAzureManagedDatabase = []*QueryDefinition{
-	{
-		Query:       FailoverClusterReplicaQueryAzureSQL,
-		MetricName:  "sqlserver.failover_cluster.replica_metrics",
-		Description: "Always On Availability Group replica metrics (not applicable for Azure SQL Database)",
-	},
-	{
-		Query:       FailoverClusterReplicaStateQueryAzureSQL,
-		MetricName:  "sqlserver.failover_cluster.replica_state_metrics",
-		Description: "Always On Availability Group replica state metrics (not applicable for Azure SQL Database)",
-	},
-	{
-		Query:       FailoverClusterNodeQueryAzureSQL,
-		MetricName:  "sqlserver.failover_cluster.node_metrics",
-		Description: "Cluster node metrics (not applicable for Azure SQL Database)",
-	},
-	{
-		Query:       FailoverClusterAvailabilityGroupHealthQueryAzureSQL,
-		MetricName:  "sqlserver.failover_cluster.availability_group_health_metrics",
-		Description: "Availability Group health metrics (not applicable for Azure SQL Database)",
-	},
-	{
-		Query:       FailoverClusterAvailabilityGroupQueryAzureSQL,
-		MetricName:  "sqlserver.failover_cluster.availability_group_metrics",
-		Description: "Availability Group configuration metrics (not applicable for Azure SQL Database)",
-	},
-	{
-		Query:       FailoverClusterPerformanceCounterQueryAzureSQL,
-		MetricName:  "sqlserver.failover_cluster.performance_counter_metrics",
-		Description: "Performance counter metrics (not applicable for Azure SQL Database)",
-	},
-	{
-		Query:       FailoverClusterClusterPropertiesQueryAzureSQL,
-		MetricName:  "sqlserver.failover_cluster.cluster_properties_metrics",
-		Description: "Cluster properties metrics (not applicable for Azure SQL Database)",
-	},
-}
-
-// Failover cluster query definitions for Azure SQL Managed Instance
-var failoverClusterQueriesAzureManagedInstance = []*QueryDefinition{
-	{
-		Query:       FailoverClusterReplicaQueryAzureMI,
-		MetricName:  "sqlserver.failover_cluster.replica_metrics",
-		Description: "Always On Availability Group replica metrics (limited support for Azure SQL Managed Instance)",
-	},
-	{
-		Query:       FailoverClusterReplicaStateQueryAzureMI,
-		MetricName:  "sqlserver.failover_cluster.replica_state_metrics",
-		Description: "Always On Availability Group replica state metrics (Azure SQL Managed Instance)",
-	},
-	{
-		Query:       FailoverClusterNodeQueryAzureMI,
-		MetricName:  "sqlserver.failover_cluster.node_metrics",
-		Description: "Cluster node metrics (limited support for Azure SQL Managed Instance)",
-	},
-	{
-		Query:       FailoverClusterAvailabilityGroupHealthQueryAzureMI,
-		MetricName:  "sqlserver.failover_cluster.availability_group_health_metrics",
-		Description: "Availability Group health metrics (Azure SQL Managed Instance)",
-	},
-	{
-		Query:       FailoverClusterAvailabilityGroupQueryAzureMI,
-		MetricName:  "sqlserver.failover_cluster.availability_group_metrics",
-		Description: "Availability Group configuration metrics (Azure SQL Managed Instance)",
-	},
-	{
-		Query:       FailoverClusterPerformanceCounterQueryAzureMI,
-		MetricName:  "sqlserver.failover_cluster.performance_counter_metrics",
-		Description: "Performance counter metrics (Azure SQL Managed Instance)",
-	},
-	{
-		Query:       FailoverClusterClusterPropertiesQueryAzureMI,
-		MetricName:  "sqlserver.failover_cluster.cluster_properties_metrics",
-		Description: "Cluster properties metrics (limited support for Azure SQL Managed Instance)",
+		Query:       FailoverClusterRedoQueueQuery,
+		MetricName:  "sqlserver.failover_cluster.redo_queue_metrics",
+		Description: "Always On Availability Group redo queue metrics",
 	},
 }
 
@@ -788,6 +834,48 @@ var databaseRoleMembershipQueriesAzureManagedInstance = []*QueryDefinition{
 	},
 }
 
+// Wait time query definitions for Default SQL Server
+var waitTimeQueriesDefault = []*QueryDefinition{
+	{
+		Query:       WaitTimeMetricsQuery,
+		MetricName:  "sqlserver.wait_stats.wait_time_metrics",
+		Description: "SQL Server wait statistics including wait types, wait times, and waiting task counts",
+	},
+	{
+		Query:       LatchWaitTimeMetricsQuery,
+		MetricName:  "sqlserver.wait_stats.latch.wait_time_metrics",
+		Description: "SQL Server latch-specific wait statistics",
+	},
+}
+
+// Wait time query definitions for Azure SQL Database
+var waitTimeQueriesAzureManagedDatabase = []*QueryDefinition{
+	{
+		Query:       WaitTimeMetricsQuery,
+		MetricName:  "sqlserver.wait_stats.wait_time_metrics",
+		Description: "SQL Server wait statistics for Azure SQL Database",
+	},
+	{
+		Query:       LatchWaitTimeMetricsQuery,
+		MetricName:  "sqlserver.wait_stats.latch.wait_time_metrics",
+		Description: "SQL Server latch-specific wait statistics for Azure SQL Database",
+	},
+}
+
+// Wait time query definitions for Azure SQL Managed Instance
+var waitTimeQueriesAzureManagedInstance = []*QueryDefinition{
+	{
+		Query:       WaitTimeMetricsQuery,
+		MetricName:  "sqlserver.wait_stats.wait_time_metrics",
+		Description: "SQL Server wait statistics for Azure SQL Managed Instance",
+	},
+	{
+		Query:       LatchWaitTimeMetricsQuery,
+		MetricName:  "sqlserver.wait_stats.latch.wait_time_metrics",
+		Description: "SQL Server latch-specific wait statistics for Azure SQL Managed Instance",
+	},
+}
+
 // queryDefinitionSets maps query types to engine-specific query sets
 var queryDefinitionSets = map[QueryDefinitionType]EngineSet[[]*QueryDefinition]{
 	InstanceQueries: {
@@ -819,6 +907,11 @@ var queryDefinitionSets = map[QueryDefinitionType]EngineSet[[]*QueryDefinition]{
 		Default:                 databaseRoleMembershipQueriesDefault,
 		AzureSQLDatabase:        databaseRoleMembershipQueriesAzureDatabase,
 		AzureSQLManagedInstance: databaseRoleMembershipQueriesAzureManagedInstance,
+	},
+	WaitTimeQueries: {
+		Default:                 waitTimeQueriesDefault,
+		AzureSQLDatabase:        waitTimeQueriesAzureManagedDatabase,
+		AzureSQLManagedInstance: waitTimeQueriesAzureManagedInstance,
 	},
 }
 
@@ -853,6 +946,18 @@ func GetQueryForMetric(defType QueryDefinitionType, metricName string, engineEdi
 	}
 
 	return "", false
+}
+
+// IsMetricCompatible checks if a metric is supported for a specific engine edition
+// Returns true if the metric is available for the given engine edition, false otherwise
+func IsMetricCompatible(defType QueryDefinitionType, metricName string, engineEdition int) bool {
+	queryDefs := GetQueryDefinitions(defType, engineEdition)
+	for _, queryDef := range queryDefs {
+		if queryDef.MetricName == metricName {
+			return true
+		}
+	}
+	return false
 }
 
 // GetEngineTypeName returns a human-readable name for the engine edition

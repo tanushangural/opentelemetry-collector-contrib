@@ -169,6 +169,23 @@
 // - Enables consistent data handling across different SQL Server editions
 package models
 
+// DatabaseSizeMetrics represents basic database size metrics for storage monitoring
+// This model captures the fundamental database size information for capacity planning and storage optimization
+type DatabaseSizeMetrics struct {
+	// DatabaseName is the name of the database
+	DatabaseName string `db:"DatabaseName"`
+
+	// TotalSizeMB represents the total database size including data and log files in MB
+	// This metric corresponds to total database size from New Relic
+	// Query source: sys.master_files aggregated by database (data + log files)
+	TotalSizeMB *float64 `db:"TotalSizeMB" metric_name:"sqlserver.database.size.totalSizeMB" source_type:"gauge"`
+
+	// DataSizeMB represents the total data file size in MB (excluding log files)
+	// This metric corresponds to data file size from New Relic
+	// Query source: sys.master_files filtered for ROWS type files only
+	DataSizeMB *float64 `db:"DataSizeMB" metric_name:"sqlserver.database.size.dataSizeMB" source_type:"gauge"`
+}
+
 // DatabaseBufferMetrics represents buffer pool metrics for a specific database
 // This model captures the buffer pool size per database as defined in New Relic's MSSQL integration
 type DatabaseBufferMetrics struct {
@@ -259,4 +276,37 @@ type DatabaseMemoryMetrics struct {
 	// This metric corresponds to memoryUtilization from New Relic
 	// Query source: calculated from sys.dm_os_process_memory and sys.dm_os_sys_memory
 	MemoryUtilizationPercent *float64 `db:"memory_utilization" metric_name:"sqlserver.instance.memoryUtilization" source_type:"gauge"`
+}
+
+// DatabaseTransactionLogMetrics represents transaction log performance metrics for database operations
+// This model captures the transaction log activity metrics as defined in New Relic's MSSQL integration
+type DatabaseTransactionLogMetrics struct {
+	// LogFlushesPerSec represents the number of log flush operations per second
+	// This metric corresponds to log flush rate from New Relic
+	// Query source: sys.dm_os_performance_counters for 'Log Flushes/sec' counter
+	LogFlushesPerSec *int64 `db:"Log Flushes/sec" metric_name:"sqlserver.database.log.flushesPerSec" source_type:"gauge"`
+
+	// LogBytesFlushesPerSec represents the number of log bytes flushed per second
+	// This metric corresponds to log bytes flush rate from New Relic
+	// Query source: sys.dm_os_performance_counters for 'Log Bytes Flushed/sec' counter
+	LogBytesFlushesPerSec *int64 `db:"Log Bytes Flushed/sec" metric_name:"sqlserver.database.log.bytesFlushesPerSec" source_type:"gauge"`
+
+	// FlushWaitsPerSec represents the number of flush wait operations per second
+	// This metric corresponds to flush wait rate from New Relic
+	// Query source: sys.dm_os_performance_counters for 'Flush Waits/sec' counter
+	FlushWaitsPerSec *int64 `db:"Flush Waits/sec" metric_name:"sqlserver.database.log.flushWaitsPerSec" source_type:"gauge"`
+
+	// ActiveTransactions represents the number of active transactions
+	// This metric corresponds to active transaction count from New Relic
+	// Query source: sys.dm_os_performance_counters for 'Active Transactions' counter
+	ActiveTransactions *int64 `db:"Active Transactions" metric_name:"sqlserver.database.transactions.active" source_type:"gauge"`
+}
+
+// DatabaseLogSpaceUsageMetrics represents transaction log space usage metrics for database storage monitoring
+// This model captures the log space utilization metrics for capacity planning and storage optimization
+type DatabaseLogSpaceUsageMetrics struct {
+	// UsedLogSpaceMB represents the used log space in megabytes
+	// This metric corresponds to the converted bytes value from sys.dm_db_log_space_usage
+	// Query source: sys.dm_db_log_space_usage.used_log_space_in_bytes / 1024 / 1024.0
+	UsedLogSpaceMB *float64 `db:"used_log_space_mb" metric_name:"sqlserver.database.log.usedSpaceMB" source_type:"gauge"`
 }

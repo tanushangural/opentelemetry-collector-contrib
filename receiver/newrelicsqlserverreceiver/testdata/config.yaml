@@ -1,23 +1,14 @@
-# OpenTelemetry Collector Configuration
-# Custom collector with New Relic SQL Server Receiver
 
-# Extensions provide additional functionality
 extensions:
-  # Health check endpoint
   health_check:
-    endpoint: localhost:13134
+    endpoint: localhost:1313
 
-# Service configuration
 service:
-  # Enable extensions
   extensions: [health_check]
-  
-  # Define the data pipeline
   pipelines:
-    # Metrics pipeline: receiver -> processor -> exporter
     metrics:
       receivers: [newrelicsqlserver]
-      processors: [memory_limiter, batch, resource]
+      processors: [memory_limiter, cumulativetorate, batch, resource]
       exporters: [otlphttp, debug]
     
     # Logs pipeline: receiver -> processor -> exporter (for execution plans)
@@ -33,7 +24,6 @@ service:
     metrics:
       level: none
 
-# Processors transform and enrich the data
 processors:
   # Memory limiter prevents out-of-memory issues
   memory_limiter:
@@ -41,12 +31,33 @@ processors:
     limit_mib: 256
     spike_limit_mib: 64
   
-  # Batch processor groups data for efficient transmission
+  # Convert cumulative metrics to rate metrics for New Relic
+  cumulativetorate:
+    state_ttl: 60m
+    include:
+      # Core SQL Server rate metrics
+      - "sqlserver.stats.sql_compilations_per_sec"
+      - "sqlserver.stats.sql_recompilations_per_sec"
+      - "sqlserver.stats.lock_waits_per_sec"
+      - "sqlserver.access.page_splits_per_sec"
+      - "sqlserver.buffer.checkpoint_pages_per_sec"
+      - "sqlserver.stats.deadlocks_per_sec"
+      - "sqlserver.stats.user_errors_per_sec"
+      - "sqlserver.stats.kill_connection_errors_per_sec"
+      - "sqlserver.bufferpool.batch_requests_per_sec"
+      - "sqlserver.instance.transactions_per_sec"
+      - "sqlserver.instance.forced_parameterizations_per_sec"
+      - "sqlserver.wait_stats.wait_time_ms"
+      - "sqlserver.wait_stats.waiting_tasks_count"
+      # Enhanced metrics (new)
+      - "sqlserver.instance.full_scans_rate"
+      - "sqlserver.instance.lock_timeouts_rate"
+      - "sqlserver.wait_stats.latch.*"
+  
   batch:
     timeout: 10s
     send_batch_size: 1024
   
-  # Resource processor adds metadata to all telemetry
   resource:
     attributes:
       - key: deployment.environment
@@ -62,33 +73,41 @@ processors:
         value: "sqlserver.execution_plan_operator"
         action: upsert
 
-# Receivers collect telemetry data
 receivers:
-  # Your New Relic SQL Server Receiver
   newrelicsqlserver:
-    # SQL Server connection configuration
-    # ⚠️  REPLACE THESE WITH YOUR ACTUAL VALUES ⚠️
-    hostname: "your-sql-server-hostname"                    # e.g., "your-sql-server.com" or "192.168.1.100"
-    port: "1433"                # Default SQL Server port
-    username: "your-username"              # e.g., "monitoring_user"
-    password: "your-password"              # Your SQL Server password
-
-    # Optional: Named instance (if using SQL Server named instances)
-    # instance: "${SQLSERVER_INSTANCE}"            # e.g., "SQLEXPRESS" 
+    # SQL Server connection
+    hostname: ""
+    port: "1433"
+    username: ""
+    password: ""
+    collection_interval: 15s
     
-    # Query execution timeout (increased for slow queries on busy systems)
+    # Core instance metrics
     timeout: 300s
+    query_monitoring_fetch_interval: 300 
+    enable_instance_memory_metrics: true
+    enable_instance_comprehensive_stats: true
+    enable_instance_stats: true
+    enable_instance_buffer_pool_hit_percent: true
+    enable_instance_process_counts: true
+    enable_instance_runnable_tasks: true
+    enable_instance_disk_metrics: true
+    enable_instance_active_connections: true
+    enable_instance_buffer_pool_size: true
     
-    # Collection interval (how often to collect metrics)
-    collection_interval: 60s
-
-    # Lookback window for slow queries - should be >= collection_interval to avoid missing queries
-    query_monitoring_fetch_interval: 300       # seconds - captures queries from last 5 minutes
+    # Enhanced metrics (new)
+    enable_instance_target_memory_metrics: true      # Target server memory
+    enable_instance_performance_ratios_metrics: true # Compilations/batch ratios
+    enable_instance_index_metrics: true              # Full scans performance
+    enable_instance_lock_metrics: true               # Lock timeouts
+    enable_latch_wait_time_metrics: true             # Latch wait metrics
     
-    # Optional: Initial delay before starting collection
-    # initial_delay: 10s
+    # Security metrics
+    enable_security_metrics: true
+    enable_security_principals_metrics: true
+    enable_security_role_members_metrics: true
     
-    # Enable query performance monitoring (blocking sessions, slow queries, etc.)
+    # Query monitoring
     enable_query_monitoring: true
 
     # Enable active running queries monitoring (captures currently executing queries with waits)
@@ -99,9 +118,8 @@ receivers:
     query_monitoring_count_threshold: 20           # minimum execution count for queries to be monitored
     query_monitoring_text_truncate_limit: 4094    # characters - maximum length of SQL text in query monitoring results (4KB - 2 bytes)
 
-# Exporters send telemetry data to destinations
 exporters:
-  # New Relic OTLP HTTP Exporter
+  # New Relic OTLP endpoint
   otlphttp:
     # New Relic OTLP endpoint (HTTP uses port 4318, not 4317)
     endpoint: "https://staging-otlp.nr-data.net:4318"
@@ -147,51 +165,20 @@ exporters:
     # TLS configuration
     tls:
       insecure: false
-    
-    # Retry configuration
     retry_on_failure:
       enabled: true
       initial_interval: 1s
       max_interval: 30s
       max_elapsed_time: 300s
-    
-    # Queue configuration for handling bursts
     sending_queue:
       enabled: true
       num_consumers: 2
       queue_size: 100
-    
-    # Compression (gzip is recommended)
     compression: gzip
-    
-    # Timeout for HTTP requests
     timeout: 30s
   
-  # Debug exporter for debugging (outputs to console)
+  # Debug output to console
   debug:
     verbosity: detailed
-    # Output ALL metrics and logs without sampling for troubleshooting
-    sampling_initial: 10000  # Increased to capture more initial data
-    sampling_thereafter: 10000  # Increased to see all metrics continuously
-
-# Environment Variables to Set:
-# 
-# Required:
-# export SQLSERVER_HOST="your-sql-server-hostname-or-ip"
-# export SQLSERVER_USERNAME="your-sql-username"
-# export SQLSERVER_PASSWORD="your-sql-password"
-# export NEW_RELIC_LICENSE_KEY="your-newrelic-license-key"
-#
-# Optional:
-# export SQLSERVER_PORT="1433"
-# export SQLSERVER_DATABASE="master"  
-# export SQLSERVER_INSTANCE="SQLEXPRESS"
-#
-# Example:
-# export SQLSERVER_HOST="192.168.1.100"
-# export SQLSERVER_USERNAME="monitoring_user"
-# export SQLSERVER_PASSWORD="SecurePassword123!"
-# export NEW_RELIC_LICENSE_KEY="eu01xxNRAL-your-actual-key-here"
-#
-# Then run:
-# ./bin/otelcol-newrelic --config=config.yaml
+    sampling_initial: 2
+    sampling_thereafter: 500

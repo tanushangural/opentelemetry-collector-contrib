@@ -241,3 +241,153 @@ const DatabaseListQueryAzureSQL = `SELECT DB_NAME() AS name`
 const DatabaseListQueryAzureMI = `SELECT name FROM sys.databases 
 WHERE name NOT IN ('master', 'tempdb', 'msdb', 'model', 'rdsadmin', 'distribution', 'model_msdb', 'model_replicatedmaster')
 AND state = 0`
+
+// DatabaseSizeQuery returns the SQL query for basic database size metrics (Total and Data Size)
+// This query provides fundamental database size information for capacity planning and storage optimization
+// Source: sys.master_files for comprehensive database size analysis
+const DatabaseSizeQuery = `
+SELECT
+    d.name AS [DatabaseName],
+    -- Calculate Total Size (Data + Log) in MB
+    CAST(SUM(mf.size) * 8.0 / 1024 AS DECIMAL(18, 2)) AS [TotalSizeMB],
+    -- Calculate Data Size (Rows only) in MB
+    CAST(SUM(CASE WHEN mf.type_desc = 'ROWS' THEN mf.size ELSE 0 END) * 8.0 / 1024 AS DECIMAL(18, 2)) AS [DataSizeMB]
+FROM
+    sys.master_files AS mf
+JOIN
+    sys.databases AS d ON mf.database_id = d.database_id
+WHERE
+    d.name NOT IN ('master', 'tempdb', 'msdb', 'model', 'rdsadmin', 'distribution', 'model_msdb', 'model_replicatedmaster')
+    AND d.state = 0
+GROUP BY
+    d.name
+ORDER BY
+    d.name`
+
+// DatabaseSizeQueryAzureSQL returns the Azure SQL Database specific size query
+// Azure SQL Database has limited access to sys.master_files, so we use sys.database_files
+const DatabaseSizeQueryAzureSQL = `
+SELECT
+    DB_NAME() AS [DatabaseName],
+    -- Calculate Total Size using database files
+    CAST(SUM(size) * 8.0 / 1024 AS DECIMAL(18, 2)) AS [TotalSizeMB],
+    -- Calculate Data Size (Rows only)
+    CAST(SUM(CASE WHEN type_desc = 'ROWS' THEN size ELSE 0 END) * 8.0 / 1024 AS DECIMAL(18, 2)) AS [DataSizeMB]
+FROM
+    sys.database_files
+WHERE
+    state = 0`
+
+// DatabaseSizeQueryAzureMI returns the Azure SQL Managed Instance specific size query
+// Azure SQL Managed Instance supports sys.master_files access like standard SQL Server
+const DatabaseSizeQueryAzureMI = `
+SELECT
+    d.name AS [DatabaseName],
+    -- Calculate Total Size (Data + Log) in MB
+    CAST(SUM(mf.size) * 8.0 / 1024 AS DECIMAL(18, 2)) AS [TotalSizeMB],
+    -- Calculate Data Size (Rows only) in MB
+    CAST(SUM(CASE WHEN mf.type_desc = 'ROWS' THEN mf.size ELSE 0 END) * 8.0 / 1024 AS DECIMAL(18, 2)) AS [DataSizeMB]
+FROM
+    sys.master_files AS mf
+JOIN
+    sys.databases AS d ON mf.database_id = d.database_id
+WHERE
+    d.name NOT IN ('master', 'tempdb', 'msdb', 'model', 'rdsadmin', 'distribution', 'model_msdb', 'model_replicatedmaster')
+    AND d.state = 0
+GROUP BY
+    d.name
+ORDER BY
+    d.name`
+
+// DatabaseTransactionLogQuery returns the SQL query for transaction log performance metrics
+// This query retrieves log flush, log bytes flushed, flush waits, and active transactions
+// Using individual queries for each metric to avoid issues with PIVOT and missing counters
+// Source: sys.dm_os_performance_counters for database-specific transaction log metrics
+const DatabaseTransactionLogQuery = `SELECT
+    COALESCE(
+        (SELECT cntr_value FROM sys.dm_os_performance_counters WITH (NOLOCK)
+         WHERE object_name LIKE '%Databases%' AND counter_name = 'Log Flushes/sec' AND instance_name = '_Total'), 0
+    ) AS "Log Flushes/sec",
+    COALESCE(
+        (SELECT cntr_value FROM sys.dm_os_performance_counters WITH (NOLOCK)
+         WHERE object_name LIKE '%Databases%' AND counter_name = 'Log Bytes Flushed/sec' AND instance_name = '_Total'), 0
+    ) AS "Log Bytes Flushed/sec",
+    COALESCE(
+        (SELECT cntr_value FROM sys.dm_os_performance_counters WITH (NOLOCK)
+         WHERE object_name LIKE '%Databases%' AND counter_name = 'Log Flush Waits/sec' AND instance_name = '_Total'), 0
+    ) AS "Flush Waits/sec",
+    COALESCE(
+        (SELECT cntr_value FROM sys.dm_os_performance_counters WITH (NOLOCK)
+         WHERE object_name LIKE '%Databases%' AND counter_name = 'Active Transactions' AND instance_name = '_Total'), 0
+    ) AS "Active Transactions"`
+
+// DatabaseTransactionLogQueryAzureSQL returns the Azure SQL Database specific transaction log query
+// Azure SQL Database has limited access to performance counters, so we use alternate queries
+// DatabaseTransactionLogQueryAzureDB returns the SQL query for transaction log performance metrics on Azure SQL Database
+// Some performance counters may not be available in Azure SQL Database
+// Using individual subqueries with proper null handling for Azure SQL Database compatibility
+const DatabaseTransactionLogQueryAzureDB = `SELECT
+    COALESCE(
+        (SELECT cntr_value FROM sys.dm_os_performance_counters WITH (NOLOCK)
+         WHERE object_name LIKE '%Database Replica%' AND counter_name = 'Log Flushes/sec' AND instance_name = DB_NAME()), 
+        (SELECT cntr_value FROM sys.dm_os_performance_counters WITH (NOLOCK)
+         WHERE object_name LIKE '%Databases%' AND counter_name = 'Log Flushes/sec' AND instance_name = DB_NAME()), 0
+    ) AS "Log Flushes/sec",
+    COALESCE(
+        (SELECT cntr_value FROM sys.dm_os_performance_counters WITH (NOLOCK)
+         WHERE object_name LIKE '%Database Replica%' AND counter_name = 'Log Bytes Flushed/sec' AND instance_name = DB_NAME()), 
+        (SELECT cntr_value FROM sys.dm_os_performance_counters WITH (NOLOCK)
+         WHERE object_name LIKE '%Databases%' AND counter_name = 'Log Bytes Flushed/sec' AND instance_name = DB_NAME()), 0
+    ) AS "Log Bytes Flushed/sec",
+    COALESCE(
+        (SELECT cntr_value FROM sys.dm_os_performance_counters WITH (NOLOCK)
+         WHERE object_name LIKE '%Database Replica%' AND counter_name = 'Log Flush Waits/sec' AND instance_name = DB_NAME()), 
+        (SELECT cntr_value FROM sys.dm_os_performance_counters WITH (NOLOCK)
+         WHERE object_name LIKE '%Databases%' AND counter_name = 'Log Flush Waits/sec' AND instance_name = DB_NAME()), 0
+    ) AS "Flush Waits/sec",
+    COALESCE(
+        (SELECT cntr_value FROM sys.dm_os_performance_counters WITH (NOLOCK)
+         WHERE object_name LIKE '%Database Replica%' AND counter_name = 'Active Transactions' AND instance_name = DB_NAME()), 
+        (SELECT cntr_value FROM sys.dm_os_performance_counters WITH (NOLOCK)
+         WHERE object_name LIKE '%Databases%' AND counter_name = 'Active Transactions' AND instance_name = DB_NAME()), 0
+    ) AS "Active Transactions"` // DatabaseTransactionLogQueryAzureMI returns the Azure SQL Managed Instance specific transaction log query
+// Azure SQL Managed Instance supports full performance counter access like standard SQL Server
+const DatabaseTransactionLogQueryAzureMI = `SELECT
+    COALESCE(
+        (SELECT cntr_value FROM sys.dm_os_performance_counters WITH (NOLOCK)
+         WHERE object_name LIKE '%Databases%' AND counter_name = 'Log Flushes/sec' AND instance_name = '_Total'), 0
+    ) AS "Log Flushes/sec",
+    COALESCE(
+        (SELECT cntr_value FROM sys.dm_os_performance_counters WITH (NOLOCK)
+         WHERE object_name LIKE '%Databases%' AND counter_name = 'Log Bytes Flushed/sec' AND instance_name = '_Total'), 0
+    ) AS "Log Bytes Flushed/sec",
+    COALESCE(
+        (SELECT cntr_value FROM sys.dm_os_performance_counters WITH (NOLOCK)
+         WHERE object_name LIKE '%Databases%' AND counter_name = 'Log Flush Waits/sec' AND instance_name = '_Total'), 0
+    ) AS "Flush Waits/sec",
+    COALESCE(
+        (SELECT cntr_value FROM sys.dm_os_performance_counters WITH (NOLOCK)
+         WHERE object_name LIKE '%Databases%' AND counter_name = 'Active Transactions' AND instance_name = '_Total'), 0
+    ) AS "Active Transactions"`
+
+// DatabaseLogSpaceUsageQuery returns the SQL query for database log space usage metrics
+// This query retrieves the used log space in MB from sys.dm_db_log_space_usage
+// Available on Standard SQL Server with appropriate database context handling
+const DatabaseLogSpaceUsageQuery = `SELECT
+    used_log_space_in_bytes / 1024 / 1024.0 AS used_log_space_mb
+FROM
+    sys.dm_db_log_space_usage`
+
+// DatabaseLogSpaceUsageQueryAzureSQL returns the Azure SQL Database specific log space usage query
+// Uses the same sys.dm_db_log_space_usage DMV which is available in Azure SQL Database
+const DatabaseLogSpaceUsageQueryAzureSQL = `SELECT
+    used_log_space_in_bytes / 1024 / 1024.0 AS used_log_space_mb
+FROM
+    sys.dm_db_log_space_usage`
+
+// DatabaseLogSpaceUsageQueryAzureMI returns the Azure SQL Managed Instance specific log space usage query
+// Uses the same sys.dm_db_log_space_usage DMV which is available in Azure SQL Managed Instance
+const DatabaseLogSpaceUsageQueryAzureMI = `SELECT
+    used_log_space_in_bytes / 1024 / 1024.0 AS used_log_space_mb
+FROM
+    sys.dm_db_log_space_usage`

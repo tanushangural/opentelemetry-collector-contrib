@@ -943,10 +943,10 @@ func (s *QueryPerformanceScraper) processQueryExecutionPlanMetrics(result models
 		if result.QueryPlanID != nil {
 			attrs.PutStr("query_plan_id", result.QueryPlanID.String())
 		}
-		// Add execution plan XML for ingestion to NRDB
-		if result.ExecutionPlanXML != nil && *result.ExecutionPlanXML != "" {
-			attrs.PutStr("execution_plan_xml", *result.ExecutionPlanXML)
-		}
+		// NOTE: execution_plan_xml is NOT included in metrics to avoid data duplication
+		// Execution plans are already sent as parsed logs via scrapeLogs() with full operator details
+		// If you need the XML, query the logs: FROM Log WHERE eventName = 'sqlserver.execution_plan_operator'
+		
 		// Add SQL text (anonymized)
 		if result.SQLText != nil {
 			anonymizedSQL := helpers.AnonymizeQueryText(*result.SQLText)

@@ -225,6 +225,12 @@ type ExecutionPlanNode struct {
 	LogicalOp  string `json:"logical_op"`
 	InputType  string `json:"input_type"`
 
+	// Object Information (for Index Scan/Seek operators)
+	SchemaName        string `json:"schema_name"`
+	TableName         string `json:"table_name"`
+	IndexName         string `json:"index_name"`
+	ReferencedColumns string `json:"referenced_columns"`
+
 	// Cost Estimates
 	EstimateRows          float64 `json:"estimate_rows"`
 	EstimateIO            float64 `json:"estimate_io"`

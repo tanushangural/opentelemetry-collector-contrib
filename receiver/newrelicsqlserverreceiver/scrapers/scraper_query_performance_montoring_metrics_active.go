@@ -679,6 +679,20 @@ func (s *QueryPerformanceScraper) createActiveQueryExecutionPlanNodeLog(node *mo
 	attrs.PutStr("logical_op", node.LogicalOp)
 	attrs.PutStr("sql_text", node.SQLText)
 
+	// Object information (for Index Scan/Seek operators)
+	if node.SchemaName != "" {
+		attrs.PutStr("schema_name", node.SchemaName)
+	}
+	if node.TableName != "" {
+		attrs.PutStr("table_name", node.TableName)
+	}
+	if node.IndexName != "" {
+		attrs.PutStr("index_name", node.IndexName)
+	}
+	if node.ReferencedColumns != "" {
+		attrs.PutStr("referenced_columns", node.ReferencedColumns)
+	}
+
 	// Cost estimates
 	attrs.PutDouble("estimate_rows", node.EstimateRows)
 	attrs.PutDouble("estimate_io", node.EstimateIO)
@@ -737,5 +751,96 @@ func (s *QueryPerformanceScraper) createActiveQueryExecutionPlanNodeLog(node *mo
 	}
 	if activeQuery.HostName != nil {
 		attrs.PutStr("host_name", *activeQuery.HostName)
+	}
+	if activeQuery.ProgramName != nil {
+		attrs.PutStr("program_name", *activeQuery.ProgramName)
+	}
+	if activeQuery.RequestCommand != nil {
+		attrs.PutStr("request_command", *activeQuery.RequestCommand)
+	}
+	
+	// Add blocking information for execution plan correlation
+	if activeQuery.BlockingSessionID != nil {
+		attrs.PutStr("blocking_session_id", *activeQuery.BlockingSessionID)
+	}
+	if activeQuery.BlockerLoginName != nil {
+		attrs.PutStr("blocker_login_name", *activeQuery.BlockerLoginName)
+	}
+	if activeQuery.BlockerHostName != nil {
+		attrs.PutStr("blocker_host_name", *activeQuery.BlockerHostName)
+	}
+	if activeQuery.BlockerProgramName != nil {
+		attrs.PutStr("blocker_program_name", *activeQuery.BlockerProgramName)
+	}
+	
+	// Add query performance metrics from active query context
+	if activeQuery.CPUTimeMs != nil {
+		attrs.PutInt("query_cpu_time_ms", *activeQuery.CPUTimeMs)
+	}
+	if activeQuery.TotalElapsedTimeMs != nil {
+		attrs.PutInt("query_total_elapsed_time_ms", *activeQuery.TotalElapsedTimeMs)
+	}
+	if activeQuery.LogicalReads != nil {
+		attrs.PutInt("query_logical_reads", *activeQuery.LogicalReads)
+	}
+	if activeQuery.Reads != nil {
+		attrs.PutInt("query_reads", *activeQuery.Reads)
+	}
+	if activeQuery.Writes != nil {
+		attrs.PutInt("query_writes", *activeQuery.Writes)
+	}
+	if activeQuery.RowCount != nil {
+		attrs.PutInt("query_row_count", *activeQuery.RowCount)
+	}
+	if activeQuery.GrantedQueryMemoryPages != nil {
+		attrs.PutInt("query_granted_memory_pages", *activeQuery.GrantedQueryMemoryPages)
+	}
+	
+	// Add transaction and isolation level information
+	if activeQuery.TransactionID != nil {
+		attrs.PutInt("transaction_id", *activeQuery.TransactionID)
+	}
+	if activeQuery.OpenTransactionCount != nil {
+		attrs.PutInt("open_transaction_count", *activeQuery.OpenTransactionCount)
+	}
+	if activeQuery.TransactionIsolationLevel != nil {
+		attrs.PutInt("transaction_isolation_level", *activeQuery.TransactionIsolationLevel)
+	}
+	
+	// Add parallel query information
+	if activeQuery.ParallelWorkerCount != nil {
+		attrs.PutInt("parallel_worker_count", *activeQuery.ParallelWorkerCount)
+	}
+	if activeQuery.DegreeOfParallelism != nil {
+		attrs.PutInt("degree_of_parallelism", *activeQuery.DegreeOfParallelism)
+	}
+	
+	// Add session context
+	if activeQuery.SessionStatus != nil {
+		attrs.PutStr("session_status", *activeQuery.SessionStatus)
+	}
+	if activeQuery.ClientInterfaceName != nil {
+		attrs.PutStr("client_interface_name", *activeQuery.ClientInterfaceName)
+	}
+	
+	// Add wait information
+	if activeQuery.LastWaitType != nil {
+		attrs.PutStr("last_wait_type", *activeQuery.LastWaitType)
+	}
+	if activeQuery.WaitTimeS != nil {
+		attrs.PutDouble("wait_time_seconds", *activeQuery.WaitTimeS)
+	}
+	
+	// Add query texts
+	if activeQuery.QueryStatementText != nil {
+		attrs.PutStr("query_statement_text", helpers.AnonymizeQueryText(*activeQuery.QueryStatementText))
+	}
+	if activeQuery.BlockingQueryStatementText != nil {
+		attrs.PutStr("blocking_query_statement_text", helpers.AnonymizeQueryText(*activeQuery.BlockingQueryStatementText))
+	}
+	
+	// Add collection timestamp
+	if activeQuery.CollectionTimestamp != nil {
+		attrs.PutStr("collection_timestamp", *activeQuery.CollectionTimestamp)
 	}
 }

@@ -94,6 +94,7 @@ type RelOp struct {
 	// Operator-specific details
 	RunTimeInformation *RunTimeInformation `xml:"RunTimeInformation,omitempty"`
 	MemoryFractions    *MemoryFractions    `xml:"MemoryFractions,omitempty"`
+	OutputList         *OutputList         `xml:"OutputList,omitempty"` // Column references (at RelOp level)
 	IndexScan          *IndexScan          `xml:"IndexScan,omitempty"`
 	NestedLoops        *NestedLoops        `xml:"NestedLoops,omitempty"`
 	Hash               *Hash               `xml:"Hash,omitempty"`
@@ -145,7 +146,9 @@ type IndexScan struct {
 	ScanDirection string   `xml:"ScanDirection,attr"`
 	ForcedIndex   string   `xml:"ForcedIndex,attr"`
 	ForceSeek     string   `xml:"ForceSeek,attr"`
-	RelOp         []RelOp  `xml:"RelOp"` // Child operators
+	Object        *Object  `xml:"Object,omitempty"`     // Table/Index information
+	RelOp         []RelOp  `xml:"RelOp"`                // Child operators
+	OutputList    *OutputList `xml:"OutputList,omitempty"` // Referenced columns
 }
 
 // NestedLoops contains nested loop join details
@@ -227,6 +230,28 @@ type QueryTimeStats struct {
 	XMLName     xml.Name `xml:"QueryTimeStats"`
 	ElapsedTime string   `xml:"ElapsedTime,attr"`
 	CpuTime     string   `xml:"CpuTime,attr"`
+}
+
+// Object represents table/index information in execution plan
+type Object struct {
+	XMLName  xml.Name `xml:"Object"`
+	Database string   `xml:"Database,attr"`
+	Schema   string   `xml:"Schema,attr"`
+	Table    string   `xml:"Table,attr"`
+	Index    string   `xml:"Index,attr"`
+	IndexKind string  `xml:"IndexKind,attr"`
+}
+
+// OutputList contains list of columns being output by an operator
+type OutputList struct {
+	XMLName         xml.Name          `xml:"OutputList"`
+	ColumnReference []ColumnReference `xml:"ColumnReference"`
+}
+
+// DefinedValues contains computed/derived values in execution plan
+type DefinedValues struct {
+	XMLName         xml.Name          `xml:"DefinedValues"`
+	ColumnReference []ColumnReference `xml:"ColumnReference"`
 }
 
 // ParseExecutionPlanXML parses SQL Server execution plan XML into structured data
@@ -339,6 +364,36 @@ func parseRelOpRecursively(relOp *RelOp, analysis *ExecutionPlanAnalysis, queryI
 		if val, err := strconv.ParseInt(counter.ActualExecutions, 10, 64); err == nil {
 			node.ExecutionCount = val
 		}
+	}
+
+	// Extract table/index information from IndexScan operator
+	if relOp.IndexScan != nil && relOp.IndexScan.Object != nil {
+		obj := relOp.IndexScan.Object
+		node.SchemaName = obj.Schema
+		node.TableName = obj.Table
+		node.IndexName = obj.Index
+	}
+	
+	// Extract referenced columns from OutputList (at RelOp level for all operators)
+	if relOp.OutputList != nil {
+		var columns []string
+		for _, colRef := range relOp.OutputList.ColumnReference {
+			if colRef.Column != "" {
+				columns = append(columns, colRef.Column)
+			}
+		}
+		node.ReferencedColumns = strings.Join(columns, ", ")
+	}
+	
+	// Fallback: Extract columns from IndexScan.OutputList if RelOp.OutputList is empty
+	if node.ReferencedColumns == "" && relOp.IndexScan != nil && relOp.IndexScan.OutputList != nil {
+		var columns []string
+		for _, colRef := range relOp.IndexScan.OutputList.ColumnReference {
+			if colRef.Column != "" {
+				columns = append(columns, colRef.Column)
+			}
+		}
+		node.ReferencedColumns = strings.Join(columns, ", ")
 	}
 
 	// Check for performance issues

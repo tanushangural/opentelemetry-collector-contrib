@@ -395,10 +395,7 @@ SELECT TOP (@TopN)
         OBJECT_SCHEMA_NAME(s.objectid, s.database_id),
         'N/A'
     ) AS schema_name,
-    FORMAT(
-        s.last_execution_time AT TIME ZONE 'UTC',
-        'yyyy-MM-ddTHH:mm:ssZ'
-    ) AS last_execution_timestamp,
+    CONVERT(VARCHAR(25), SWITCHOFFSET(CAST(s.last_execution_time AS DATETIMEOFFSET), '+00:00'), 127) + 'Z' AS last_execution_timestamp,
     s.execution_count,
     s.avg_cpu_time_ms,
     s.avg_elapsed_time_ms,
@@ -416,10 +413,7 @@ SELECT TOP (@TopN)
     s.last_spills,
     s.max_spills,
     s.last_dop,
-    FORMAT(
-        SYSDATETIMEOFFSET() AT TIME ZONE 'UTC',
-        'yyyy-MM-ddTHH:mm:ssZ'
-    ) AS collection_timestamp
+    CONVERT(VARCHAR(25), SWITCHOFFSET(SYSDATETIMEOFFSET(), '+00:00'), 127) + 'Z' AS collection_timestamp
 FROM
     StatementDetails s
 WHERE
@@ -480,7 +474,7 @@ SELECT TOP (@Limit)
     blocking_info.wait_type,
     blocking_info.wait_time_in_seconds,
     blocking_info.blocked_command_type AS command_type,
-    FORMAT(blocking_info.blocked_start_time AT TIME ZONE 'UTC', 'yyyy-MM-ddTHH:mm:ssZ') AS blocked_query_start_time,
+    CONVERT(VARCHAR(25), SWITCHOFFSET(CAST(blocking_info.blocked_start_time AS DATETIMEOFFSET), '+00:00'), 127) + 'Z' AS blocked_query_start_time,
     DB_NAME(blocking_info.database_id) AS database_name,
 
     -- RCA Enhancement: Blocker session identity (WHO is causing the block)
@@ -493,7 +487,7 @@ SELECT TOP (@Limit)
 
     -- RCA Enhancement: Blocker activity context (WHAT is blocker doing)
     ISNULL(blocking_info.blocker_command_type, 'N/A') AS blocker_command_type,
-    FORMAT(blocking_info.blocker_start_time AT TIME ZONE 'UTC', 'yyyy-MM-ddTHH:mm:ssZ') AS blocker_start_time,
+    CONVERT(VARCHAR(25), SWITCHOFFSET(CAST(blocking_info.blocker_start_time AS DATETIMEOFFSET), '+00:00'), 127) + 'Z' AS blocker_start_time,
     -- Use session status as fallback if blocker is not in dm_exec_requests (i.e., sleeping)
     COALESCE(blocking_info.blocker_req_status, blocking_sessions.status, 'N/A') AS blocker_status,
     -- Use session open_transaction_count as fallback if blocker is not in dm_exec_requests
@@ -553,8 +547,8 @@ SELECT TOP (@TopN)
     r.wait_time AS total_wait_time_ms,
     r.wait_time AS avg_wait_time_ms,
     1 AS wait_event_count,
-    FORMAT(r.start_time AT TIME ZONE 'UTC', 'yyyy-MM-ddTHH:mm:ssZ') AS last_execution_time,
-    FORMAT(SYSDATETIMEOFFSET() AT TIME ZONE 'UTC', 'yyyy-MM-ddTHH:mm:ssZ') AS collection_timestamp
+    CONVERT(VARCHAR(25), SWITCHOFFSET(CAST(r.start_time AS DATETIMEOFFSET), '+00:00'), 127) + 'Z' AS last_execution_time,
+    CONVERT(VARCHAR(25), SWITCHOFFSET(SYSDATETIMEOFFSET(), '+00:00'), 127) + 'Z' AS collection_timestamp
 FROM sys.dm_exec_requests r
 INNER JOIN sys.dm_exec_sessions s ON r.session_id = s.session_id
 CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) st
@@ -567,8 +561,6 @@ WHERE r.session_id > 50
 ORDER BY r.wait_time DESC;`
 
 const QueryExecutionPlan = `
-DECLARE @TargetQueryHash BINARY(8) = %s;
-
 SELECT
     qs.query_hash AS query_id,
     qs.plan_handle,
@@ -576,13 +568,13 @@ SELECT
     CAST(qp.query_plan AS NVARCHAR(MAX)) AS execution_plan_xml,
     qs.total_worker_time / 1000.0 AS total_cpu_ms,
     qs.total_elapsed_time / 1000.0 AS total_elapsed_ms,
-    FORMAT(qs.creation_time AT TIME ZONE 'UTC', 'yyyy-MM-ddTHH:mm:ssZ') AS creation_time,
-    FORMAT(qs.last_execution_time AT TIME ZONE 'UTC', 'yyyy-MM-ddTHH:mm:ssZ') AS last_execution_time,
+    CONVERT(VARCHAR(25), SWITCHOFFSET(CAST(qs.creation_time AS DATETIMEOFFSET), '+00:00'), 127) + 'Z' AS creation_time,
+    CONVERT(VARCHAR(25), SWITCHOFFSET(CAST(qs.last_execution_time AS DATETIMEOFFSET), '+00:00'), 127) + 'Z' AS last_execution_time,
     st.text AS sql_text
 FROM sys.dm_exec_query_stats AS qs
 CROSS APPLY sys.dm_exec_query_plan(qs.plan_handle) AS qp
 CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) AS st
-WHERE qs.query_hash = @TargetQueryHash
+WHERE qs.query_hash IN (%s)
     AND qp.query_plan IS NOT NULL;`
 
 // ActiveQueryExecutionPlanQuery fetches the execution plan for an active query using its plan_handle
@@ -624,6 +616,35 @@ SELECT TOP (@Limit)
     r_wait.wait_resource AS wait_resource,
     r_wait.last_wait_type AS last_wait_type,
 
+    -- C2. DECODED WAIT RESOURCE (Human-readable names)
+    -- Simplified to avoid SUBSTRING errors - detailed parsing done in Go helpers
+    CASE
+        -- KEY Lock: Show raw wait_resource (parsing done in Go helper)
+        WHEN r_wait.wait_resource LIKE 'KEY:%%' THEN
+            'KEY Lock: ' + r_wait.wait_resource
+
+        -- PAGE Lock: Show raw wait_resource
+        WHEN r_wait.wait_resource LIKE 'PAGE:%%' THEN
+            'PAGE Lock: ' + r_wait.wait_resource
+
+        -- RID Lock: Show raw wait_resource
+        WHEN r_wait.wait_resource LIKE 'RID:%%' THEN
+            'RID Lock: ' + r_wait.wait_resource
+
+        -- OBJECT Lock: Show raw wait_resource
+        WHEN r_wait.wait_resource LIKE 'OBJECT:%%' THEN
+            'OBJECT Lock: ' + r_wait.wait_resource
+
+        -- DATABASE Lock: Show raw wait_resource
+        WHEN r_wait.wait_resource LIKE 'DATABASE:%%' THEN
+            'DATABASE Lock: ' + r_wait.wait_resource
+
+        -- Not applicable for non-lock waits
+        WHEN r_wait.wait_resource = '' OR r_wait.wait_resource IS NULL THEN 'N/A'
+
+        ELSE r_wait.wait_resource
+    END AS wait_resource_decoded,
+
     -- D. PERFORMANCE/EXECUTION METRICS
     r_wait.cpu_time AS cpu_time_ms,
     r_wait.total_elapsed_time AS total_elapsed_time_ms,
@@ -636,10 +657,7 @@ SELECT TOP (@Limit)
         r_wait.start_time AT TIME ZONE 'UTC',
         'yyyy-MM-ddTHH:mm:ssZ'
     ) AS request_start_time,
-    FORMAT(
-        SYSDATETIMEOFFSET() AT TIME ZONE 'UTC',
-        'yyyy-MM-ddTHH:mm:ssZ'
-    ) AS collection_timestamp,
+    CONVERT(VARCHAR(25), SWITCHOFFSET(SYSDATETIMEOFFSET(), '+00:00'), 127) + 'Z' AS collection_timestamp,
 
     -- E. TRANSACTION CONTEXT (RCA for long-running transactions)
     r_wait.transaction_id AS transaction_id,
@@ -668,25 +686,16 @@ SELECT TOP (@Limit)
     ISNULL(s_blocker.program_name, 'N/A') AS blocker_program_name,
 
     -- J. QUERY TEXT - Current Session
-    -- Extract specific SQL statement from batch using Microsoft's official offset logic
-    -- Reference: https://learn.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-views/sys-dm-exec-query-stats-transact-sql
-    LEFT(SUBSTRING(st_wait.text, (r_wait.statement_start_offset / 2) + 1,
-        ((CASE r_wait.statement_end_offset
-            WHEN -1 THEN DATALENGTH(st_wait.text)
-            ELSE r_wait.statement_end_offset
-        END - r_wait.statement_start_offset) / 2)
-    ), @TextTruncateLimit) AS query_statement_text,
+    -- Using full text to avoid SUBSTRING errors
+    LEFT(st_wait.text, @TextTruncateLimit) AS query_statement_text,
 
     -- K. QUERY TEXT - Blocking Session
+    -- Simplified to avoid SUBSTRING errors
     CASE
         WHEN r_wait.blocking_session_id = 0 THEN 'N/A'
-        WHEN r_blocker.command IS NULL THEN LEFT(ib_blocker.event_info, @TextTruncateLimit)
-        ELSE LEFT(SUBSTRING(st_blocker.text, (r_blocker.statement_start_offset / 2) + 1,
-            ((CASE r_blocker.statement_end_offset
-                WHEN -1 THEN DATALENGTH(st_blocker.text)
-                ELSE r_blocker.statement_end_offset
-            END - r_blocker.statement_start_offset) / 2) + 1
-        ), @TextTruncateLimit)
+        WHEN r_blocker.command IS NULL AND ib_blocker.event_info IS NOT NULL THEN LEFT(ib_blocker.event_info, @TextTruncateLimit)
+        WHEN st_blocker.text IS NOT NULL THEN LEFT(st_blocker.text, @TextTruncateLimit)
+        ELSE 'N/A'
     END AS blocking_query_statement_text
 
 FROM
@@ -707,6 +716,7 @@ WHERE
     r_wait.session_id > 50
     AND r_wait.database_id > 4
     AND r_wait.wait_type IS NOT NULL
+    AND r_wait.query_hash IS NOT NULL  -- Filter out queries without query_hash (PREEMPTIVE waits, system queries)
 ORDER BY
     r_wait.wait_time DESC;`
 
@@ -737,10 +747,7 @@ SELECT
     l.request_status AS lock_status,
     l.request_type AS lock_request_type,
     l.resource_description,
-    FORMAT(
-        SYSDATETIMEOFFSET() AT TIME ZONE 'UTC',
-        'yyyy-MM-ddTHH:mm:ssZ'
-    ) AS collection_timestamp
+    CONVERT(VARCHAR(25), SWITCHOFFSET(SYSDATETIMEOFFSET(), '+00:00'), 127) + 'Z' AS collection_timestamp
 FROM sys.dm_tran_locks l
 LEFT JOIN sys.partitions p
     ON l.resource_associated_entity_id = p.hobt_id

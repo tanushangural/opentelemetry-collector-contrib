@@ -287,10 +287,11 @@ type ActiveRunningQuery struct {
 	QueryID *QueryID `db:"query_id" metric_name:"query_id" source_type:"attribute"`
 
 	// C. Wait Details
-	WaitType     *string  `db:"wait_type" metric_name:"wait_type" source_type:"attribute"`
-	WaitTimeS    *float64 `db:"wait_time_s" metric_name:"sqlserver.activequery.wait_time_seconds" source_type:"gauge"`
-	WaitResource *string  `db:"wait_resource" metric_name:"wait_resource" source_type:"attribute"`
-	LastWaitType *string  `db:"last_wait_type" metric_name:"last_wait_type" source_type:"attribute"`
+	WaitType            *string  `db:"wait_type" metric_name:"wait_type" source_type:"attribute"`
+	WaitTimeS           *float64 `db:"wait_time_s" metric_name:"sqlserver.activequery.wait_time_seconds" source_type:"gauge"`
+	WaitResource        *string  `db:"wait_resource" metric_name:"wait_resource" source_type:"attribute"`
+	WaitResourceDecoded *string  `db:"wait_resource_decoded" metric_name:"wait_resource_decoded" source_type:"attribute"`
+	LastWaitType        *string  `db:"last_wait_type" metric_name:"last_wait_type" source_type:"attribute"`
 
 	// D. Performance/Execution Metrics
 	CPUTimeMs               *int64  `db:"cpu_time_ms" metric_name:"sqlserver.activequery.cpu_time_ms" source_type:"gauge"`

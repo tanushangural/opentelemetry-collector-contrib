@@ -119,8 +119,9 @@ func (s *sqlServerScraper) shutdown(ctx context.Context) error {
 }
 
 // scrapeLogs collects execution plan logs from SQL Server and emits them as OTLP logs
+// NOW COLLECTS EXECUTION PLANS FOR ACTIVE RUNNING QUERIES ONLY (not slow queries from dm_exec_query_stats)
 func (s *sqlServerScraper) scrapeLogs(ctx context.Context) (plog.Logs, error) {
-	s.logger.Info("=== scrapeLogs: Starting SQL Server logs collection for execution plans ===")
+	s.logger.Info("=== scrapeLogs: Starting SQL Server logs collection for ACTIVE QUERY execution plans ===")
 
 	// Create logs collection
 	logs := plog.NewLogs()
@@ -131,22 +132,34 @@ func (s *sqlServerScraper) scrapeLogs(ctx context.Context) (plog.Logs, error) {
 		return logs, nil
 	}
 
-	s.logger.Info("Query monitoring is ENABLED, proceeding with execution plan collection")
+	if s.queryPerformanceScraper == nil {
+		s.logger.Warn("Query performance scraper not initialized, skipping execution plan logs collection")
+		return logs, nil
+	}
 
-	// Get execution plan data from query performance scraper
-	executionPlans, err := s.collectExecutionPlanData(ctx)
+	s.logger.Info("Query monitoring is ENABLED, collecting execution plans for ACTIVE running queries")
+
+	// Create a dummy scope metrics (not used, but required by scraper signature)
+	dummyMetrics := pmetric.NewMetrics()
+	scopeMetrics := dummyMetrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty()
+
+	// Scrape active running queries with execution plans
+	// This will fetch, parse, and emit execution plan operators as OTLP logs
+	limit := s.config.QueryMonitoringCountThreshold
+	textTruncateLimit := s.config.QueryMonitoringTextTruncateLimit
+
+	s.logger.Info("Collecting active running query execution plans",
+		zap.Int("limit", limit),
+		zap.Int("text_truncate_limit", textTruncateLimit))
+
+	err := s.queryPerformanceScraper.ScrapeActiveRunningQueriesMetrics(ctx, scopeMetrics, logs, limit, textTruncateLimit)
 	if err != nil {
-		s.logger.Error("Failed to collect execution plan data for logs", zap.Error(err))
+		s.logger.Error("Failed to scrape active running query execution plans", zap.Error(err))
 		return logs, err
 	}
 
-	s.logger.Info("Collected execution plans for logs", zap.Int("count", len(executionPlans)))
-
-	// Convert execution plans to OTLP logs
-	s.convertExecutionPlansToLogs(executionPlans, logs)
-
 	logCount := logs.LogRecordCount()
-	s.logger.Info("=== scrapeLogs: Completed SQL Server logs collection ===",
+	s.logger.Info("=== scrapeLogs: Completed SQL Server logs collection for ACTIVE queries ===",
 		zap.Int("log_records", logCount),
 		zap.Int("resource_logs", logs.ResourceLogs().Len()))
 
@@ -154,6 +167,10 @@ func (s *sqlServerScraper) scrapeLogs(ctx context.Context) (plog.Logs, error) {
 }
 
 // collectExecutionPlanData collects execution plan data directly from the database for logs
+// DEPRECATED: This function collected slow query execution plans from dm_exec_query_stats
+// It is no longer called by scrapeLogs(). Execution plans are now collected ONLY for
+// ACTIVE running queries (from dm_exec_requests) during ScrapeActiveRunningQueriesMetrics()
+// This function remains for reference but is not used in the current implementation.
 func (s *sqlServerScraper) collectExecutionPlanData(ctx context.Context) ([]*models.ExecutionPlanAnalysis, error) {
 	if s.queryPerformanceScraper == nil {
 		s.logger.Debug("Query performance scraper not initialized, skipping execution plan collection")
@@ -744,7 +761,9 @@ func (s *sqlServerScraper) scrape(ctx context.Context) (pmetric.Metrics, error) 
 			zap.Int("limit", limit),
 			zap.Int("text_truncate_limit", textTruncateLimit))
 
-		if err := s.queryPerformanceScraper.ScrapeActiveRunningQueriesMetrics(scrapeCtx, scopeMetrics, limit, textTruncateLimit); err != nil {
+		// Create empty logs (metrics scraper doesn't emit logs, only metrics)
+		emptyLogs := plog.NewLogs()
+		if err := s.queryPerformanceScraper.ScrapeActiveRunningQueriesMetrics(scrapeCtx, scopeMetrics, emptyLogs, limit, textTruncateLimit); err != nil {
 			s.logger.Warn("Failed to scrape active running queries metrics - continuing with other metrics",
 				zap.Error(err),
 				zap.Duration("timeout", s.config.Timeout),
